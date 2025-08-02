@@ -1,0 +1,38 @@
+# .env 파일들은 민감한 정보가 포함되어 깃허브에 올리지 않습니다
+.env
+.env.local
+.env.production
+backend/.env
+
+# 로그 파일
+logs/
+*.log
+
+# 빌드 파일
+**/build/
+**/target/
+**/bin/
+
+# IDE 파일
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# 임시 파일
+*.tmp
+*.temp
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar

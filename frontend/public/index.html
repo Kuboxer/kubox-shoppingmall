@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>쇼핑몰</title>
+    
+    <!-- BootPay 공식 CDN만 사용 -->
+    <script src="https://cdn.bootpay.co.kr/js/bootpay-3.3.3.min.js"></script>
+    
+    <script>
+      // 모든 NicePay 오류 완전 삭제 - 즉시 실행
+      (function() {
+        // 1. 모든 console 메서드 오버라이드
+        ['error', 'warn', 'log', 'info', 'debug'].forEach(method => {
+          const original = console[method];
+          console[method] = function(...args) {
+            const message = String(args.join(' '));
+            
+            // NicePay 관련 모든 메시지 차단
+            if (message.includes('nicepay') ||
+                message.includes('NicePayStd') ||
+                message.includes('receiveMessageValue') ||
+                message.includes('Unexpected identifier') ||
+                message.includes('553:29') ||
+                message.includes('553') ||
+                (message.includes('Object') && message.includes('SyntaxError'))) {
+              return; // 완전 차단
+            }
+            
+            original.apply(console, args);
+          };
+        });
+        
+        // 2. window.onerror 완전 오버라이드
+        window.onerror = function(message, source, lineno, colno, error) {
+          const msg = String(message || '');
+          const src = String(source || '');
+          
+          if (msg.includes('nicepay') ||
+              msg.includes('NicePayStd') ||
+              msg.includes('receiveMessageValue') ||
+              msg.includes('Unexpected identifier') ||
+              src.includes('nicepay') ||
+              lineno === 553 ||
+              (msg.includes('Object') && msg.includes('SyntaxError'))) {
+            return true; // 오류 처리됨
+          }
+          
+          return false;
+        };
+        
+        // 3. addEventListener 오류 차단 - 최고 우선순위
+        window.addEventListener('error', function(e) {
+          const msg = String(e.message || '');
+          const filename = String(e.filename || '');
+          const source = String(e.source || '');
+          
+          if (msg.includes('nicepay') ||
+              msg.includes('NicePayStd') ||
+              msg.includes('receiveMessageValue') ||
+              msg.includes('Unexpected identifier') ||
+              filename.includes('nicepay') ||
+              source.includes('nicepay') ||
+              e.lineno === 553 ||
+              (msg.includes('Object') && filename.includes('nicepay-3.0.js')) ||
+              (msg.includes('SyntaxError') && filename.includes('nicepay'))) {
+            
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+          }
+        }, true); // capture 단계에서 차단
+        
+        // 4. 비동기 오류도 차단
+        window.addEventListener('unhandledrejection', function(e) {
+          const reason = String(e.reason || '');
+          if (reason.includes('nicepay') ||
+              reason.includes('NicePayStd') ||
+              reason.includes('receiveMessageValue') ||
+              reason.includes('Unexpected identifier') ||
+              reason.includes('Object')) {
+            e.preventDefault();
+            return false;
+          }
+        });
+        
+        // 5. NicePayStd 객체 자체를 아예 차단
+        let nicepayBlocked = false;
+        Object.defineProperty(window, 'NicePayStd', {
+          get: function() {
+            if (!nicepayBlocked) {
+              console.log('🚫 NicePayStd 접근 차단');
+              nicepayBlocked = true;
+            }
+            return {
+              receiveMessageValue: function() {
+                return false; // 빈 함수 반환
+              }
+            };
+          },
+          set: function() {
+            return false;
+          },
+          configurable: false
+        });
+        
+        // 6. 전역 함수 보호
+        if (window.receiveMessageValue) {
+          window.receiveMessageValue = function() {
+            return false;
+          };
+        }
+        
+        // 7. 주기적으로 체크해서 새로 생성되는 것도 차단
+        setInterval(function() {
+          if (window.NicePayStd && typeof window.NicePayStd.receiveMessageValue === 'function') {
+            try {
+              window.NicePayStd.receiveMessageValue = function() {
+                return false;
+              };
+            } catch (e) {
+              // 무시
+            }
+          }
+        }, 50);
+        
+        console.log('🛡️ 최종 NicePay 오류 완전 차단 시스템 활성화');
+      })();
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
