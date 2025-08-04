@@ -41,7 +41,7 @@ function Header({ user, logout }) {
     <header className="header">
       <div className="container">
         <nav className="nav">
-          <Link to="/" className="logo">SHOP</Link>
+          <Link to="/" className="logo">KUBOX</Link>
           <div className="nav-links">
             <Link to="/products">상품</Link>
             {user ? (

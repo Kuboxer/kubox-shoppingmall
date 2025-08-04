@@ -61,7 +61,7 @@ public class OrderService {
     
     // Circuit Breaker Fallback 메서드
     public String fallbackPayment(Long orderId, int amount, Exception ex) {
-        System.out.println("💔 결제 서비스 장애 감지! Fallback 실행: " + ex.getMessage());
+        System.out.println("결제 서비스 장애 감지! Fallback 실행: " + ex.getMessage());
         // 나중에 처리하기 위해 큐에 저장하거나 다른 로직 수행
         return "PENDING";
     }
