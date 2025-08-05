@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
 function ProductList() {
   const [products, setProducts] = useState([]);
@@ -10,7 +11,7 @@ function ProductList() {
 
   const fetchProducts = async () => {
     try {
-      const response = await axios.get('http://localhost:8081/api/products');
+      const response = await axios.get(`${API_ENDPOINTS.PRODUCT}/api/products`);
       setProducts(response.data);
     } catch (error) {
       console.error('상품 로딩 실패:', error);
@@ -25,7 +26,7 @@ function ProductList() {
     }
 
     try {
-      await axios.post('http://localhost:8084/api/cart/add', {
+      await axios.post(`${API_ENDPOINTS.CART}/api/cart/add`, {
         userId: 1, // 실제로는 JWT에서 추출
         productId: product.id,
         productName: product.name,

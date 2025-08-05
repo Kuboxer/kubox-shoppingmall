@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
 function Header({ user, logout }) {
   const [userName, setUserName] = useState('');
@@ -17,7 +18,7 @@ function Header({ user, logout }) {
     try {
       console.log('토큰으로 사용자 정보 조회 중:', user.token);
       
-      const response = await axios.get('http://localhost:8080/api/users/profile', {
+      const response = await axios.get(`${API_ENDPOINTS.USER}/api/users/profile`, {
         headers: {
           'Authorization': `Bearer ${user.token}`
         }

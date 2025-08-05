@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
 function Register({ setUser }) {
   const [email, setEmail] = useState('');
@@ -11,7 +12,7 @@ function Register({ setUser }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:8080/api/users/register', {
+      const response = await axios.post(`${API_ENDPOINTS.USER}/api/users/register`, {
         email,
         password,
         name

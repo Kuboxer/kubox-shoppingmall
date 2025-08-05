@@ -8,7 +8,7 @@ import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/users")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "${CORS_ALLOWED_ORIGINS}")
 public class UserController {
     @Autowired
     private UserService userService;

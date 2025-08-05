@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
 function Cart({ user }) {
   const [cartItems, setCartItems] = useState([]);
@@ -17,7 +18,7 @@ function Cart({ user }) {
     try {
       const token = localStorage.getItem('token');
       if (token) {
-        const response = await axios.get('http://localhost:8080/api/users/profile', {
+        const response = await axios.get(`${API_ENDPOINTS.USER}/api/users/profile`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -34,7 +35,7 @@ function Cart({ user }) {
 
   const fetchCartItems = async () => {
     try {
-      const response = await axios.get('http://localhost:8084/api/cart/1');
+      const response = await axios.get(`${API_ENDPOINTS.CART}/api/cart/1`);
       setCartItems(response.data);
     } catch (error) {
       console.error('장바구니 로딩 실패:', error);
@@ -43,7 +44,7 @@ function Cart({ user }) {
 
   const removeItem = async (itemId) => {
     try {
-      await axios.delete(`http://localhost:8084/api/cart/${itemId}`);
+      await axios.delete(`${API_ENDPOINTS.CART}/api/cart/${itemId}`);
       fetchCartItems();
     } catch (error) {
       alert('삭제에 실패했습니다.');
@@ -53,7 +54,7 @@ function Cart({ user }) {
   const updateQuantity = async (itemId, quantity) => {
     if (quantity < 1) return;
     try {
-      await axios.put(`http://localhost:8084/api/cart/${itemId}`, { quantity });
+      await axios.put(`${API_ENDPOINTS.CART}/api/cart/${itemId}`, { quantity });
       fetchCartItems();
     } catch (error) {
       alert('수량 변경에 실패했습니다.');

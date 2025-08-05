@@ -8,7 +8,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/cart")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "${CORS_ALLOWED_ORIGINS}")
 public class CartController {
     @Autowired
     private CartService cartService;
