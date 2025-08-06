@@ -4,7 +4,8 @@
 .env.production
 backend/.env
 frontend/.env
-aws/
+
+# AWS 관련 파일 (민감한 정보 포함)
 
 # 로그 파일
 logs/
@@ -37,4 +38,5 @@ npm-debug.log*
 # Gradle
 .gradle/
 gradle-app.setting
-!gradle-wrapper.jaraws/
+!gradle-wrapper.jar
+aws/

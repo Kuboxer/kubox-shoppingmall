@@ -1,0 +1,139 @@
+name: Build and Push Backend Services
+
+on:
+  workflow_dispatch: 
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Get short commit hash
+        id: vars
+        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+        
+      - name: Determine next version for each service
+        id: version
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # 서비스 매핑 (폴더명:태그명)
+          declare -A SERVICES
+          SERVICES["user-service"]="user"
+          SERVICES["product-service"]="prod" 
+          SERVICES["order-service"]="order"
+          SERVICES["payment-service"]="pay"
+          SERVICES["cart-service"]="cart"
+          
+          # 각 서비스의 다음 버전 계산
+          for SERVICE_DIR in "${!SERVICES[@]}"; do
+            SERVICE_TAG="${SERVICES[$SERVICE_DIR]}"
+            
+            echo "🔍 Checking existing versions for $SERVICE_TAG..."
+            
+            # ECR에서 해당 서비스의 모든 태그 가져오기
+            EXISTING_TAGS=$(aws ecr list-images \
+              --repository-name kubox \
+              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
+              --output text 2>/dev/null || echo "")
+            
+            # 최고 버전 찾기
+            MAX_VERSION=0
+            if [[ -n "$EXISTING_TAGS" ]]; then
+              for TAG in $EXISTING_TAGS; do
+                if [[ $TAG =~ ^$SERVICE_TAG-v([0-9]+)$ ]]; then
+                  VERSION_NUM=${BASH_REMATCH[1]}
+                  if (( VERSION_NUM > MAX_VERSION )); then
+                    MAX_VERSION=$VERSION_NUM
+                  fi
+                fi
+              done
+            fi
+            
+            # 다음 버전 계산
+            NEXT_VERSION=$((MAX_VERSION + 1))
+            
+            echo "📦 $SERVICE_TAG: v$MAX_VERSION → v$NEXT_VERSION"
+            echo "${SERVICE_TAG}_VERSION=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+          done
+        
+      - name: Build and push Docker images for 5 backend services
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SHA_TAG: ${{ steps.vars.outputs.sha_short }}
+          USER_VERSION: ${{ steps.version.outputs.user_VERSION }}
+          PROD_VERSION: ${{ steps.version.outputs.prod_VERSION }}
+          ORDER_VERSION: ${{ steps.version.outputs.order_VERSION }}
+          PAY_VERSION: ${{ steps.version.outputs.pay_VERSION }}
+          CART_VERSION: ${{ steps.version.outputs.cart_VERSION }}
+        run: |
+          # 서비스 매핑과 버전 매핑
+          declare -A SERVICES
+          SERVICES["user-service"]="user"
+          SERVICES["product-service"]="prod" 
+          SERVICES["order-service"]="order"
+          SERVICES["payment-service"]="pay"
+          SERVICES["cart-service"]="cart"
+          
+          declare -A VERSIONS
+          VERSIONS["user"]="$USER_VERSION"
+          VERSIONS["prod"]="$PROD_VERSION"
+          VERSIONS["order"]="$ORDER_VERSION"
+          VERSIONS["pay"]="$PAY_VERSION"
+          VERSIONS["cart"]="$CART_VERSION"
+          
+          echo "🚀 Starting build process..."
+          
+          for SERVICE_DIR in "${!SERVICES[@]}"; do
+            SERVICE_TAG="${SERVICES[$SERVICE_DIR]}"
+            VERSION="${VERSIONS[$SERVICE_TAG]}"
+            CONTEXT="backend/$SERVICE_DIR"
+            
+            # 메인 이미지 태그 (버전 + 커밋해시)
+            IMAGE_NAME="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION-$SHA_TAG"
+            # latest 버전 태그
+            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION"
+            
+            echo "🔨 Building $SERVICE_DIR"
+            echo "   📦 Image: $IMAGE_NAME"
+            echo "   🏷️  Latest: $LATEST_IMAGE"
+            
+            # Docker 이미지 빌드
+            docker build -t $IMAGE_NAME $CONTEXT
+            
+            # ECR에 푸시
+            docker push $IMAGE_NAME
+            
+            # latest 버전 태그도 생성하고 푸시
+            docker tag $IMAGE_NAME $LATEST_IMAGE
+            docker push $LATEST_IMAGE
+            
+            echo "✅ $SERVICE_DIR → $SERVICE_TAG-$VERSION completed"
+            echo "---"
+          done
+          
+          echo "🎉 All services built successfully!"
+          echo "Generated images:"
+          echo "- kubox:user-$USER_VERSION-$SHA_TAG"
+          echo "- kubox:prod-$PROD_VERSION-$SHA_TAG" 
+          echo "- kubox:order-$ORDER_VERSION-$SHA_TAG"
+          echo "- kubox:pay-$PAY_VERSION-$SHA_TAG"
+          echo "- kubox:cart-$CART_VERSION-$SHA_TAG"

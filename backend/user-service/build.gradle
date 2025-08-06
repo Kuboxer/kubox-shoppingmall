@@ -20,6 +20,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'io.github.resilience4j:resilience4j-spring-boot2:2.0.2'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     
@@ -50,3 +51,11 @@ bootRun {
         }
     }
 }
+
+    // AWS Secrets Manager
+    implementation platform('software.amazon.awssdk:bom:2.20.26')
+    implementation 'software.amazon.awssdk:secretsmanager'
+    implementation 'software.amazon.awssdk:sts'
+    
+    // JSON 처리용 (이미 있을 수 있음)
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
