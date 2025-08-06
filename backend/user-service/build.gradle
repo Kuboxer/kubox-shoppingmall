@@ -30,6 +30,11 @@ dependencies {
     implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
     implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5'
     
+    // AWS Secrets Manager
+    implementation platform('software.amazon.awssdk:bom:2.20.26')
+    implementation 'software.amazon.awssdk:secretsmanager'
+    implementation 'software.amazon.awssdk:sts'
+    
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
@@ -51,11 +56,3 @@ bootRun {
         }
     }
 }
-
-    // AWS Secrets Manager
-    implementation platform('software.amazon.awssdk:bom:2.20.26')
-    implementation 'software.amazon.awssdk:secretsmanager'
-    implementation 'software.amazon.awssdk:sts'
-    
-    // JSON 처리용 (이미 있을 수 있음)
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
