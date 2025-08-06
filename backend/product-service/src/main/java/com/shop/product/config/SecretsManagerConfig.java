@@ -45,7 +45,8 @@ public class SecretsManagerConfig {
             
             // JSON 파싱
             ObjectMapper mapper = new ObjectMapper();
-            Map<String, String> secrets = mapper.readValue(secretString, Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> secrets = mapper.readValue(secretString, Map.class);
             
             // 환경변수로 추가
             environment.getPropertySources().addFirst(new MapPropertySource("secrets-manager", secrets));
