@@ -1,5 +1,7 @@
 package com.shop.payment.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
@@ -12,17 +14,19 @@ import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueReques
 import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
 @Configuration
-@RequiredArgsConstructor
-@Slf4j
 public class SecretsManagerConfig {
     
+    private static final Logger log = LoggerFactory.getLogger(SecretsManagerConfig.class);
+    
     private final ConfigurableEnvironment environment;
+    
+    public SecretsManagerConfig(ConfigurableEnvironment environment) {
+        this.environment = environment;
+    }
     
     @EventListener(ApplicationReadyEvent.class)
     public void loadSecretsOnStartup() {

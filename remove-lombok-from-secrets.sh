@@ -1,4 +1,14 @@
-package com.shop.product.config;
+#!/bin/bash
+
+# 모든 서비스의 SecretsManagerConfig.java를 Lombok 없이 수정
+
+SERVICES=("user-service" "product-service" "payment-service" "cart-service")
+
+echo "=== SecretsManagerConfig Lombok 제거 중 ==="
+
+# 기본 템플릿 생성
+cat > /tmp/SecretsManagerConfig.template << 'EOF'
+package com.shop.PACKAGE_NAME.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,3 +74,24 @@ public class SecretsManagerConfig {
         }
     }
 }
+EOF
+
+for SERVICE in "${SERVICES[@]}"; do
+    SERVICE_NAME="${SERVICE%-service}"
+    TARGET_FILE="backend/$SERVICE/src/main/java/com/shop/$SERVICE_NAME/config/SecretsManagerConfig.java"
+    
+    echo "처리 중: $SERVICE"
+    
+    # 템플릿 복사하고 패키지명 수정
+    sed "s/PACKAGE_NAME/$SERVICE_NAME/g" /tmp/SecretsManagerConfig.template > "$TARGET_FILE"
+    
+    echo "$SERVICE 완료"
+done
+
+# user-service도 동일하게 수정
+sed "s/PACKAGE_NAME/user/g" /tmp/SecretsManagerConfig.template > "backend/user-service/src/main/java/com/shop/user/config/SecretsManagerConfig.java"
+
+# 임시 파일 삭제
+rm /tmp/SecretsManagerConfig.template
+
+echo "=== SecretsManagerConfig Lombok 제거 완료 ==="
