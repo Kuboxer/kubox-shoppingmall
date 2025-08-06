@@ -107,23 +107,23 @@ jobs:
             VERSION="${VERSIONS[$SERVICE_TAG]}"
             CONTEXT="backend/$SERVICE_DIR"
             
-            # 메인 이미지 태그 (버전 + 커밋해시)
-            IMAGE_NAME="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION-$SHA_TAG"
-            # latest 버전 태그
-            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION"
+            # 버전별 이미지 태그 
+            VERSIONED_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION"
+            # latest 태그
+            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
             
             echo "🔨 Building $SERVICE_DIR"
-            echo "   📦 Image: $IMAGE_NAME"
+            echo "   📦 Versioned: $VERSIONED_IMAGE"
             echo "   🏷️  Latest: $LATEST_IMAGE"
             
             # Docker 이미지 빌드
-            docker build -t $IMAGE_NAME $CONTEXT
+            docker build -t $VERSIONED_IMAGE $CONTEXT
             
             # ECR에 푸시
-            docker push $IMAGE_NAME
+            docker push $VERSIONED_IMAGE
             
-            # latest 버전 태그도 생성하고 푸시
-            docker tag $IMAGE_NAME $LATEST_IMAGE
+            # latest 태그 생성 및 푸시
+            docker tag $VERSIONED_IMAGE $LATEST_IMAGE
             docker push $LATEST_IMAGE
             
             echo "✅ $SERVICE_DIR → $SERVICE_TAG-$VERSION completed"
@@ -132,8 +132,8 @@ jobs:
           
           echo "🎉 All services built successfully!"
           echo "Generated images:"
-          echo "- kubox:user-$USER_VERSION-$SHA_TAG"
-          echo "- kubox:prod-$PROD_VERSION-$SHA_TAG" 
-          echo "- kubox:order-$ORDER_VERSION-$SHA_TAG"
-          echo "- kubox:pay-$PAY_VERSION-$SHA_TAG"
-          echo "- kubox:cart-$CART_VERSION-$SHA_TAG"
+          echo "- kubox:user-$USER_VERSION & kubox:user-latest"
+          echo "- kubox:prod-$PROD_VERSION & kubox:prod-latest" 
+          echo "- kubox:order-$ORDER_VERSION & kubox:order-latest"
+          echo "- kubox:pay-$PAY_VERSION & kubox:pay-latest"
+          echo "- kubox:cart-$CART_VERSION & kubox:cart-latest"
