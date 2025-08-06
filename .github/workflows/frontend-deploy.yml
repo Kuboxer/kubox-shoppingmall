@@ -1,0 +1,56 @@
+name: Deploy Frontend to S3
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Build React app
+      run: |
+        cd frontend
+        npm run build
+      env:
+        CI: false
+        REACT_APP_USER_API_URL: ${{ secrets.REACT_APP_USER_API_URL }}
+        REACT_APP_PRODUCT_API_URL: ${{ secrets.REACT_APP_PRODUCT_API_URL }}
+        REACT_APP_ORDER_API_URL: ${{ secrets.REACT_APP_ORDER_API_URL }}
+        REACT_APP_PAYMENT_API_URL: ${{ secrets.REACT_APP_PAYMENT_API_URL }}
+        REACT_APP_CART_API_URL: ${{ secrets.REACT_APP_CART_API_URL }}
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    - name: Deploy to S3
+      run: |
+        cd frontend
+        aws s3 sync build/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
+    
+    - name: Invalidate CloudFront (optional)
+      run: |
+        echo "CloudFront invalidation can be added here if needed"
