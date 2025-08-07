@@ -77,8 +77,9 @@ jobs:
           for SERVICE in $CHANGED_SERVICES; do
             echo "=== Processing $SERVICE ==="
             
-            # 현재 서비스의 버전 태그들 조회
-            SIMPLE_VERSIONS=$(aws ecr describe-images \
+            # 현재 서비스의 기존 버전 확인
+            echo "Checking existing versions for $SERVICE..."
+            EXISTING_VERSIONS=$(aws ecr describe-images \
               --repository-name kubox \
               --query "imageDetails[].imageTags[]" \
               --output text 2>/dev/null | \
@@ -87,24 +88,27 @@ jobs:
               sed "s/${SERVICE}-v//" | \
               sort -n || echo "")
             
-            if [ -z "$SIMPLE_VERSIONS" ]; then
+            if [ -z "$EXISTING_VERSIONS" ]; then
               NEXT_VERSION=1
+              echo "🆕 No existing versions found. Creating first version: v1"
             else
-              LATEST_VERSION=$(echo "$SIMPLE_VERSIONS" | tail -1)
+              echo "📋 Existing versions: $(echo $EXISTING_VERSIONS | tr '\n' ' ')"
+              LATEST_VERSION=$(echo "$EXISTING_VERSIONS" | tail -1)
               NEXT_VERSION=$((LATEST_VERSION + 1))
+              echo "📈 Latest version: v$LATEST_VERSION -> Next version: v$NEXT_VERSION"
             fi
             
-            # 최종 태그들 (타임스탬프 태그 제거)
+            # 최종 태그들
             VERSION_TAG="${SERVICE}-v${NEXT_VERSION}"
             LATEST_TAG="${SERVICE}-latest"
             
-            # 임시 고유 태그 (충돌 방지용, ECR에 푸시하지 않음)
+            # 임시 고유 태그 (충돌 방지용)
             TEMP_TAG="${SERVICE}-temp-${TIMESTAMP}-${BUILD_NUMBER}"
             
             VERSION_URI="$ECR_REGISTRY/kubox:$VERSION_TAG"
             LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
             
-            echo "Building version: $VERSION_TAG"
+            echo "🏗️  Building $SERVICE as $VERSION_TAG"
             
             # 도커 빌드
             cd backend/$SERVICE
@@ -120,7 +124,12 @@ jobs:
                 # latest 태그 적용 및 푸시
                 docker tag "$TEMP_TAG" "$LATEST_URI"
                 docker push "$LATEST_URI"
-                echo "✅ Updated latest tag"
+                echo "✅ Updated $LATEST_TAG tag"
+                
+                # 결과 확인
+                echo "🎯 $SERVICE is now available as:"
+                echo "   📦 $VERSION_TAG"
+                echo "   🏷️  $LATEST_TAG"
                 
               else
                 echo "❌ Failed to push $VERSION_TAG"
@@ -134,11 +143,15 @@ jobs:
             fi
             
             cd ../..
-            echo "✅ Completed $SERVICE: $VERSION_TAG"
             echo "---"
           done
           
-      - name: Show final state
+      - name: Summary
         run: |
-          echo "🎉 Build completed!"
-          echo "Clean tags: service-v1, service-v2, service-latest"
+          echo ""
+          echo "🎉 Deployment Summary:"
+          echo "✅ Changed services were built with incremental versions"
+          echo "📋 Version logic:"
+          echo "   - No existing image: Creates v1"
+          echo "   - Existing images: Creates next version (v2, v3, ...)"
+          echo "   - Latest tag always points to newest version"
