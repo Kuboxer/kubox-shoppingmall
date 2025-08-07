@@ -1,11 +1,14 @@
 name: Build and Push Backend Services
 
+# 추가 코멘트: 2025-08-07 ECR 이미지 빌드 및 푸시
+
 on:
-  workflow_dispatch: 
+  workflow_dispatch:   # 수동 실행 가능
   push:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'  # workflow 파일 변경시도 실행
 
 jobs:
   build:
