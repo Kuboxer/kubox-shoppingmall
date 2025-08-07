@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -27,23 +29,57 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Get next version and build
+      - name: Detect changed services and build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          # 서비스 목록
-          SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
+          # 변경된 파일 확인
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
           
-          for SERVICE in "${SERVICES[@]}"; do
-            echo "=== Processing $SERVICE ==="
+          # 변경된 서비스 찾기
+          CHANGED_SERVICES=""
+          
+          if echo "$CHANGED_FILES" | grep -q "backend/user-service/"; then
+            CHANGED_SERVICES="$CHANGED_SERVICES user-service"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "backend/product-service/"; then
+            CHANGED_SERVICES="$CHANGED_SERVICES product-service"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "backend/order-service/"; then
+            CHANGED_SERVICES="$CHANGED_SERVICES order-service"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "backend/payment-service/"; then
+            CHANGED_SERVICES="$CHANGED_SERVICES payment-service"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "backend/cart-service/"; then
+            CHANGED_SERVICES="$CHANGED_SERVICES cart-service"
+          fi
+          
+          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | xargs)
+          
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "No service changes detected. Skipping build."
+            exit 0
+          fi
+          
+          echo "Changed services: $CHANGED_SERVICES"
+          
+          for SERVICE in $CHANGED_SERVICES; do
+            echo "=== Building $SERVICE ==="
             
-            # 현재 최고 버전 찾기
-            LATEST_VERSION=$(aws ecr list-images \
+            # 현재 최고 버전 찾기 (정확한 패턴 매칭)
+            LATEST_VERSION=$(aws ecr describe-images \
               --repository-name kubox \
               --query "imageDetails[].imageTags[]" \
               --output text 2>/dev/null | \
-              grep "^$SERVICE-v[0-9]*$" | \
-              sed "s/$SERVICE-v//" | \
+              grep "^${SERVICE}-v[0-9]\+$" | \
+              sed "s/${SERVICE}-v//" | \
               sort -n | \
               tail -1)
             
@@ -54,30 +90,41 @@ jobs:
               NEXT_VERSION=$((LATEST_VERSION + 1))
             fi
             
+            echo "Latest version: v$LATEST_VERSION"
             echo "Next version: v$NEXT_VERSION"
             
-            # 이미지 빌드
-            NEW_TAG="$SERVICE-v$NEXT_VERSION"
+            # 새 이미지 빌드
+            NEW_TAG="${SERVICE}-v${NEXT_VERSION}"
             IMAGE_URI="$ECR_REGISTRY/kubox:$NEW_TAG"
             
-            echo "Building $IMAGE_URI"
+            echo "Building new image: $IMAGE_URI"
             
-            # 도커 빌드
+            # 도커 빌드 및 푸시
             cd backend/$SERVICE
-            docker build -t $IMAGE_URI .
-            docker push $IMAGE_URI
+            if docker build -t $IMAGE_URI .; then
+              echo "✅ Build successful"
+              
+              if docker push $IMAGE_URI; then
+                echo "✅ Push successful: $NEW_TAG"
+                
+                # latest 태그 업데이트 (기존 latest는 그대로 두고 새로 생성)
+                LATEST_URI="$ECR_REGISTRY/kubox:${SERVICE}-latest"
+                docker tag $IMAGE_URI $LATEST_URI
+                docker push $LATEST_URI
+                echo "✅ Latest tag updated"
+              else
+                echo "❌ Push failed"
+              fi
+            else
+              echo "❌ Build failed"
+            fi
             
-            # latest 태그도 생성
-            LATEST_TAG="$SERVICE-latest"
-            LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
-            docker tag $IMAGE_URI $LATEST_URI
-            docker push $LATEST_URI
-            
-            echo "✅ $SERVICE completed: $NEW_TAG"
             cd ../..
+            echo "✅ $SERVICE completed: $NEW_TAG"
+            echo "---"
           done
           
-      - name: Verify deployment
+      - name: Summary
         run: |
-          echo "✅ All services deployed successfully"
-          echo "Images are now tagged with incremental versions (v1, v2, v3...)"
+          echo "✅ Deployment completed"
+          echo "Only changed services were rebuilt with incremental version tags"
