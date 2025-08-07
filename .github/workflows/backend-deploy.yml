@@ -1,4 +1,4 @@
-name: Smart Build - Fixed Tagging Issue
+name: Incremental Versioning Build
 
 on:
   workflow_dispatch:
@@ -66,7 +66,7 @@ jobs:
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_OUTPUT
           echo "최종 빌드 대상: [$BUILD_SERVICES]"
         
-      - name: Build and tag services properly
+      - name: Build with incremental versioning
         if: steps.analyze.outputs.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -79,98 +79,86 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          echo "🚀 빌드 및 태깅 시작..."
+          echo "🚀 증분 버전 빌드 시작..."
           
           for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
             echo ""
             echo "🔨 처리 중: $SERVICE → $SERVICE_TAG"
             
-            # 현재 최고 버전 확인
+            # 현재 모든 버전 태그 확인
             echo "📋 기존 버전 확인..."
-            EXISTING_TAGS=$(aws ecr list-images \
+            ALL_TAGS=$(aws ecr list-images \
               --repository-name kubox \
-              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
+              --query "imageDetails[].imageTags[]" \
               --output text 2>/dev/null || echo "")
             
-            echo "기존 태그들: $EXISTING_TAGS"
+            echo "전체 태그 목록:"
+            echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-v" | sort -V || echo "없음"
             
-            MAX_VERSION=0
-            if [[ -n "$EXISTING_TAGS" ]]; then
-              for TAG in $EXISTING_TAGS; do
-                if [[ $TAG =~ ^$SERVICE_TAG-v([0-9]+)$ ]]; then
-                  VERSION_NUM=${BASH_REMATCH[1]}
-                  if (( VERSION_NUM > MAX_VERSION )); then
-                    MAX_VERSION=$VERSION_NUM
-                  fi
-                fi
-              done
+            # 해당 서비스의 기존 버전들 찾기
+            EXISTING_VERSIONS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-v[0-9]*$" | sed "s/$SERVICE_TAG-v//" | sort -n || echo "")
+            
+            echo "기존 버전들: $EXISTING_VERSIONS"
+            
+            # 다음 버전 계산
+            if [ -z "$EXISTING_VERSIONS" ]; then
+              NEXT_VERSION=1
+              echo "첫 번째 버전 생성: v1"
+            else
+              MAX_VERSION=$(echo "$EXISTING_VERSIONS" | tail -1)
+              NEXT_VERSION=$((MAX_VERSION + 1))
+              echo "버전 증가: v$MAX_VERSION → v$NEXT_VERSION"
             fi
             
-            NEXT_VERSION=$((MAX_VERSION + 1))
-            echo "버전: v$MAX_VERSION → v$NEXT_VERSION"
-            
-            # 이미지 태그 정의
-            TEMP_TAG="$ECR_REGISTRY/kubox:temp-$SERVICE_TAG-$(date +%s)"
-            VERSIONED_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
-            LATEST_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
+            # 새 버전 태그만 생성 (기존 버전은 유지)
+            NEW_VERSION_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
+            NEW_LATEST_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
             
             echo "🏗️  Docker 빌드..."
-            echo "임시 태그: $TEMP_TAG"
+            echo "새 버전: $NEW_VERSION_TAG"
             
-            # 1. 임시 태그로 빌드
-            if docker build -t "$TEMP_TAG" "backend/$SERVICE/"; then
+            # 1. 새 버전으로 빌드
+            if docker build -t "$NEW_VERSION_TAG" "backend/$SERVICE/"; then
               echo "✅ 빌드 성공"
             else
               echo "❌ 빌드 실패"
               exit 1
             fi
             
-            # 2. 버전 태그 생성 및 푸시
-            echo "🏷️  버전 태그 생성: $VERSIONED_TAG"
-            docker tag "$TEMP_TAG" "$VERSIONED_TAG"
-            
-            echo "📤 버전 태그 푸시..."
-            if docker push "$VERSIONED_TAG"; then
-              echo "✅ 버전 태그 푸시 성공"
+            # 2. 새 버전 태그 푸시 (기존 버전들은 건드리지 않음)
+            echo "📤 새 버전 푸시: $SERVICE_TAG-v$NEXT_VERSION"
+            if docker push "$NEW_VERSION_TAG"; then
+              echo "✅ 새 버전 푸시 성공"
             else
-              echo "❌ 버전 태그 푸시 실패"
+              echo "❌ 새 버전 푸시 실패"
               exit 1
             fi
             
-            # 3. latest 태그 생성 및 푸시
-            echo "🏷️  latest 태그 생성: $LATEST_TAG"
-            docker tag "$TEMP_TAG" "$LATEST_TAG"
+            # 3. latest 태그를 새 버전으로 이동
+            echo "🏷️  latest 태그를 새 버전으로 업데이트..."
+            docker tag "$NEW_VERSION_TAG" "$NEW_LATEST_TAG"
             
-            echo "📤 latest 태그 푸시..."
-            if docker push "$LATEST_TAG"; then
-              echo "✅ latest 태그 푸시 성공"
+            if docker push "$NEW_LATEST_TAG"; then
+              echo "✅ latest 태그 업데이트 성공"
             else
-              echo "❌ latest 태그 푸시 실패"
+              echo "❌ latest 태그 업데이트 실패"
               exit 1
             fi
             
-            # 4. 임시 이미지 정리
-            docker rmi "$TEMP_TAG" || true
-            
-            echo "🎉 $SERVICE 완료: $SERVICE_TAG-v$NEXT_VERSION"
-            
-            # ECR에서 태그 확인
-            echo "🔍 ECR 태그 확인..."
-            aws ecr describe-images \
-              --repository-name kubox \
-              --image-ids imageTag="$SERVICE_TAG-v$NEXT_VERSION" \
-              --query 'imageDetails[0].imageTags' \
-              --output table || echo "태그 확인 실패"
+            echo "🎉 $SERVICE 완료:"
+            echo "  ✅ 새 버전: $SERVICE_TAG-v$NEXT_VERSION (새로 생성)"
+            echo "  ✅ latest: $SERVICE_TAG-latest (새 버전으로 이동)"
+            echo "  ✅ 기존 버전들: 그대로 유지됨"
           done
           
-      - name: Verify all tags
+      - name: Verify final state
         if: steps.analyze.outputs.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           BUILD_SERVICES: ${{ steps.analyze.outputs.build_services }}
         run: |
-          echo "🔍 최종 태그 검증..."
+          echo "🔍 최종 상태 확인..."
           
           declare -A SERVICE_TAGS
           SERVICE_TAGS["user-service"]="user"
@@ -181,20 +169,38 @@ jobs:
           
           for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
-            echo "🔍 $SERVICE_TAG 태그 확인..."
+            echo ""
+            echo "📊 $SERVICE_TAG 최종 상태:"
             
-            # 모든 태그 확인
+            # 모든 관련 태그 확인
             ALL_TAGS=$(aws ecr list-images \
               --repository-name kubox \
-              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG')].imageTags[]" \
-              --output text 2>/dev/null || echo "없음")
+              --query "imageDetails[].imageTags[]" \
+              --output text 2>/dev/null || echo "")
             
-            echo "$SERVICE_TAG 관련 태그들: $ALL_TAGS"
+            VERSION_TAGS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-v[0-9]*$" | sort -V || echo "없음")
+            LATEST_TAG=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-latest$" || echo "없음")
+            
+            echo "  📌 버전 태그들: $VERSION_TAGS"
+            echo "  🏷️  latest 태그: $LATEST_TAG"
+            
+            # latest가 가리키는 이미지 확인
+            if [ "$LATEST_TAG" != "없음" ]; then
+              LATEST_DIGEST=$(aws ecr describe-images \
+                --repository-name kubox \
+                --image-ids imageTag="$SERVICE_TAG-latest" \
+                --query 'imageDetails[0].imageDigest' \
+                --output text 2>/dev/null || echo "확인 실패")
+              echo "  🔗 latest가 가리키는 이미지: $LATEST_DIGEST"
+            fi
           done
           
       - name: Summary
         run: |
-          echo "🎯 빌드 요약:"
+          echo ""
+          echo "🎯 증분 버전 빌드 완료!"
           echo "빌드된 서비스: ${{ steps.analyze.outputs.build_services }}"
           echo ""
-          echo "✅ 모든 이미지가 올바른 태그와 함께 생성되었습니다."
+          echo "✅ 기존 버전들은 그대로 유지됩니다 (v1, v2, v3...)"
+          echo "✅ 새로운 버전만 추가로 생성됩니다"
+          echo "✅ latest 태그는 가장 최신 버전을 가리킵니다"
