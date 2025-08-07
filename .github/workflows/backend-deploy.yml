@@ -1,14 +1,18 @@
 name: Build and Push Backend Services
 
-# 추가 코멘트: 2025-08-07 ECR 이미지 빌드 및 푸시
-
 on:
-  workflow_dispatch:   # 수동 실행 가능
+  workflow_dispatch:
+    inputs:
+      force_build_all:
+        description: 'Force build all services'
+        required: false
+        default: 'false'
+        type: boolean
   push:
     branches: [ main ]
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'  # workflow 파일 변경시도 실행
+      - '.github/workflows/backend-deploy.yml'
 
 jobs:
   build:
@@ -18,7 +22,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # 이전 커밋과 비교하기 위해
+          fetch-depth: 0  # 전체 히스토리 가져오기
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -31,10 +35,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Get short commit hash
-        id: vars
-        run: echo "sha_short=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
-        
       - name: Check changed services
         id: changes
         run: |
@@ -44,32 +44,45 @@ jobs:
           SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
           CHANGED_SERVICES=""
           
-          for SERVICE in "${SERVICES[@]}"; do
-            # 각 서비스 폴더의 변경사항 확인
-            if git diff --name-only HEAD~1 HEAD | grep -q "^backend/$SERVICE/"; then
-              echo "📝 $SERVICE 변경됨"
-              CHANGED_SERVICES="$CHANGED_SERVICES $SERVICE"
-            else
-              echo "⏭️  $SERVICE 변경사항 없음"
-            fi
-          done
-          
-          # workflow 파일이 변경되었다면 모든 서비스 빌드
-          if git diff --name-only HEAD~1 HEAD | grep -q "^.github/workflows/backend-deploy.yml"; then
-            echo "🔧 Workflow 파일 변경됨 - 모든 서비스 빌드"
+          # 수동 실행시 모든 서비스 빌드 강제
+          if [ "${{ github.event.inputs.force_build_all }}" = "true" ]; then
+            echo "🔧 강제 빌드 모드 - 모든 서비스 빌드"
             CHANGED_SERVICES="user-service product-service order-service payment-service cart-service"
+          else
+            # 이전 커밋과 비교 (푸시 이벤트일 때)
+            if [ "${{ github.event_name }}" = "push" ]; then
+              # 푸시된 커밋들 확인
+              PREV_COMMIT="${{ github.event.before }}"
+              CURR_COMMIT="${{ github.sha }}"
+              
+              echo "📊 비교: $PREV_COMMIT...$CURR_COMMIT"
+              
+              # 각 서비스별 변경사항 확인
+              for SERVICE in "${SERVICES[@]}"; do
+                CHANGED_FILES=$(git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep "^backend/$SERVICE/" | grep -v "trigger.txt" || true)
+                
+                if [ -n "$CHANGED_FILES" ]; then
+                  echo "📝 $SERVICE 변경됨:"
+                  echo "$CHANGED_FILES" | sed 's/^/  - /'
+                  CHANGED_SERVICES="$CHANGED_SERVICES $SERVICE"
+                else
+                  echo "⏭️  $SERVICE 변경사항 없음"
+                fi
+              done
+            fi
           fi
           
-          # trigger.txt 파일 변경은 무시 (테스트용)
-          if git diff --name-only HEAD~1 HEAD | grep -q "^backend/trigger.txt$"; then
-            echo "🧪 트리거 파일만 변경됨 - 빌드 스킵"
-            CHANGED_SERVICES=""
-          fi
+          # 공백 제거
+          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | xargs)
           
           echo "changed_services=$CHANGED_SERVICES" >> $GITHUB_OUTPUT
-          echo "✅ 변경된 서비스: $CHANGED_SERVICES"
+          echo "✅ 최종 변경된 서비스: [$CHANGED_SERVICES]"
+          
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "ℹ️  변경된 서비스가 없습니다."
+          fi
         
-      - name: Determine next version for changed services only
+      - name: Determine versions for changed services
         id: version
         if: steps.changes.outputs.changed_services != ''
         env:
@@ -84,18 +97,20 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          echo "🔍 변경된 서비스들의 버전 확인..."
+          echo "🔍 변경된 서비스들의 버전 확인: [$CHANGED_SERVICES]"
           
           for SERVICE_DIR in $CHANGED_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE_DIR]}"
             
-            echo "🔍 Checking existing versions for $SERVICE_TAG..."
+            echo "🔍 $SERVICE_TAG 기존 버전 확인..."
             
             # ECR에서 기존 태그 확인
             EXISTING_TAGS=$(aws ecr list-images \
               --repository-name kubox \
               --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
               --output text 2>/dev/null || echo "")
+            
+            echo "📎 기존 태그: $EXISTING_TAGS"
             
             # 최고 버전 찾기
             MAX_VERSION=0
@@ -117,7 +132,7 @@ jobs:
             echo "${SERVICE_TAG}_VERSION=v$NEXT_VERSION" >> $GITHUB_OUTPUT
           done
         
-      - name: Build and push Docker images for changed services only
+      - name: Build and push only changed services
         if: steps.changes.outputs.changed_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -143,8 +158,9 @@ jobs:
           VERSIONS["pay"]="$PAY_VERSION"
           VERSIONS["cart"]="$CART_VERSION"
           
-          echo "🚀 변경된 서비스들만 빌드 시작..."
+          echo "🚀 변경된 서비스만 빌드: [$CHANGED_SERVICES]"
           
+          BUILT_COUNT=0
           for SERVICE_DIR in $CHANGED_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE_DIR]}"
             VERSION="${VERSIONS[$SERVICE_TAG]}"
@@ -152,31 +168,29 @@ jobs:
             
             # 버전별 이미지 태그 
             VERSIONED_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION"
-            # latest 태그
             LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
             
-            echo "🔨 Building $SERVICE_DIR (코드 변경됨)"
-            echo "   📦 Versioned: $VERSIONED_IMAGE"
+            echo "🔨 Building $SERVICE_DIR only (실제 코드 변경됨)"
+            echo "   📦 Version: $VERSIONED_IMAGE"
             echo "   🏷️  Latest: $LATEST_IMAGE"
             
             # Docker 이미지 빌드
             docker build -t $VERSIONED_IMAGE $CONTEXT
-            
-            # ECR에 푸시
             docker push $VERSIONED_IMAGE
             
-            # latest 태그 생성 및 푸시
+            # latest 태그
             docker tag $VERSIONED_IMAGE $LATEST_IMAGE
             docker push $LATEST_IMAGE
             
-            echo "✅ $SERVICE_DIR → $SERVICE_TAG-$VERSION completed"
-            echo "---"
+            echo "✅ $SERVICE_DIR → $SERVICE_TAG-$VERSION 완료"
+            BUILT_COUNT=$((BUILT_COUNT + 1))
           done
           
-          echo "🎉 변경된 서비스들 빌드 완료!"
+          echo "🎉 총 $BUILT_COUNT 개 서비스 빌드 완료!"
           
-      - name: No changes detected
+      - name: No changes detected  
         if: steps.changes.outputs.changed_services == ''
         run: |
           echo "ℹ️  변경된 백엔드 서비스가 없습니다."
-          echo "💡 이미지 빌드를 건너뜁니다."
+          echo "💡 불필요한 이미지 빌드를 건너뜁니다."
+          echo "🔧 특정 서비스만 빌드하려면 해당 서비스 코드를 수정하세요."
