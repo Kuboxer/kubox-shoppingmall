@@ -119,51 +119,51 @@ jobs:
             cp -r "backend/$SERVICE/"* "$TEMP_BUILD_DIR/"
             
             # 고유성을 보장하는 메타데이터 파일 추가
-            cat > "$TEMP_BUILD_DIR/BUILD_INFO" << EOF
-BUILD_TIME=$BUILD_TIME
-BUILD_ID=$BUILD_ID
-VERSION=v$NEXT_VERSION
-SERVICE=$SERVICE_TAG
-GITHUB_SHA=${{ github.sha }}
-GITHUB_RUN_ID=${{ github.run_id }}
-GITHUB_RUN_NUMBER=${{ github.run_number }}
-EOF
+            cat > "$TEMP_BUILD_DIR/BUILD_INFO" << BUILDINFO_EOF
+          BUILD_TIME=$BUILD_TIME
+          BUILD_ID=$BUILD_ID
+          VERSION=v$NEXT_VERSION
+          SERVICE=$SERVICE_TAG
+          GITHUB_SHA=${{ github.sha }}
+          GITHUB_RUN_ID=${{ github.run_id }}
+          GITHUB_RUN_NUMBER=${{ github.run_number }}
+          BUILDINFO_EOF
             
             # Dockerfile에 메타데이터 추가하는 임시 Dockerfile 생성
-            cat > "$TEMP_BUILD_DIR/Dockerfile.versioned" << 'EOF'
-# 기존 Dockerfile 내용을 그대로 가져오기
-FROM openjdk:17-jdk-slim
-
-# 작업 디렉토리 설정
-WORKDIR /app
-
-# Gradle 래퍼와 설정 파일들 복사
-COPY gradle/ gradle/
-COPY gradlew .
-COPY build.gradle .
-COPY settings.gradle .
-
-# 소스 코드 복사
-COPY src/ src/
-
-# 빌드 정보 추가 (이미지 고유성 보장)
-COPY BUILD_INFO /app/BUILD_INFO
-
-# Gradle 래퍼에 실행 권한 부여
-RUN chmod +x ./gradlew
-
-# 애플리케이션 빌드
-RUN ./gradlew build -x test
-
-# 빌드된 JAR 파일을 app.jar로 복사 (실행 가능한 JAR만)
-RUN find build/libs -name '*.jar' ! -name '*plain*' -exec cp {} app.jar \;
-
-# 포트 노출 (서비스별로 다름)
-EXPOSE 8080
-
-# 애플리케이션 실행
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
+            cat > "$TEMP_BUILD_DIR/Dockerfile.versioned" << DOCKERFILE_EOF
+          # 기존 Dockerfile 내용을 그대로 가져오기
+          FROM openjdk:17-jdk-slim
+          
+          # 작업 디렉토리 설정
+          WORKDIR /app
+          
+          # Gradle 래퍼와 설정 파일들 복사
+          COPY gradle/ gradle/
+          COPY gradlew .
+          COPY build.gradle .
+          COPY settings.gradle .
+          
+          # 소스 코드 복사
+          COPY src/ src/
+          
+          # 빌드 정보 추가 (이미지 고유성 보장)
+          COPY BUILD_INFO /app/BUILD_INFO
+          
+          # Gradle 래퍼에 실행 권한 부여
+          RUN chmod +x ./gradlew
+          
+          # 애플리케이션 빌드
+          RUN ./gradlew build -x test
+          
+          # 빌드된 JAR 파일을 app.jar로 복사 (실행 가능한 JAR만)
+          RUN find build/libs -name '*.jar' ! -name '*plain*' -exec cp {} app.jar \;
+          
+          # 포트 노출
+          EXPOSE 8080
+          
+          # 애플리케이션 실행
+          ENTRYPOINT ["java", "-jar", "app.jar"]
+          DOCKERFILE_EOF
             
             # 새 버전 이미지 빌드 (고유성 보장됨)
             NEW_VERSION_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
