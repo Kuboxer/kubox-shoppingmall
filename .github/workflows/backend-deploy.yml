@@ -46,6 +46,8 @@ jobs:
           SERVICES["payment-service"]="pay"
           SERVICES["cart-service"]="cart"
           
+          echo "🔍 기존 버전 확인 시작..."
+          
           # 각 서비스의 다음 버전 계산
           for SERVICE_DIR in "${!SERVICES[@]}"; do
             SERVICE_TAG="${SERVICES[$SERVICE_DIR]}"
@@ -58,12 +60,15 @@ jobs:
               --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
               --output text 2>/dev/null || echo "")
             
+            echo "📎 기존 태그들: $EXISTING_TAGS"
+            
             # 최고 버전 찾기
             MAX_VERSION=0
             if [[ -n "$EXISTING_TAGS" ]]; then
               for TAG in $EXISTING_TAGS; do
                 if [[ $TAG =~ ^$SERVICE_TAG-v([0-9]+)$ ]]; then
                   VERSION_NUM=${BASH_REMATCH[1]}
+                  echo "🔢 발견된 버전: v$VERSION_NUM"
                   if (( VERSION_NUM > MAX_VERSION )); then
                     MAX_VERSION=$VERSION_NUM
                   fi
@@ -77,6 +82,8 @@ jobs:
             echo "📦 $SERVICE_TAG: v$MAX_VERSION → v$NEXT_VERSION"
             echo "${SERVICE_TAG}_VERSION=v$NEXT_VERSION" >> $GITHUB_OUTPUT
           done
+          
+          echo "✅ 버전 계산 완료!"
         
       - name: Build and push Docker images for 5 backend services
         env:
