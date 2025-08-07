@@ -236,11 +236,19 @@ jobs:
             echo ""
             echo "📊 $SERVICE_TAG 최종 상태:"
             
-            # 모든 관련 이미지 확인
+            # 안전한 방식으로 모든 관련 이미지 확인
+            echo "📦 모든 버전 태그:"
+            aws ecr list-images \
+              --repository-name kubox \
+              --query "imageDetails[].imageTags[]" \
+              --output text 2>/dev/null | tr '\t' '\n' | grep "^$SERVICE_TAG" | sort -V | sed 's/^/  ✅ /' || echo "  없음"
+            
+            echo "🏷️  latest 상태:"
             aws ecr describe-images \
               --repository-name kubox \
-              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG')].{Tags:imageTags,Digest:imageDigest,Pushed:imagePushedAt}" \
-              --output table
+              --image-ids imageTag="$SERVICE_TAG-latest" \
+              --query "imageDetails[0].imageTags[0]" \
+              --output text 2>/dev/null | sed 's/^/  🎯 /' || echo "  latest 태그 없음"
           done
           
       - name: Ultimate success
