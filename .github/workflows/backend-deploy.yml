@@ -1,10 +1,10 @@
-name: Build and Push Backend Services
+name: Smart Build - Only Build When Code Changes
 
 on:
   workflow_dispatch:
     inputs:
       force_build_all:
-        description: 'Force build all services'
+        description: 'Force rebuild all services'
         required: false
         default: 'false'
         type: boolean
@@ -22,7 +22,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 전체 히스토리 가져오기
+          fetch-depth: 0
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -35,60 +35,13 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Check changed services
-        id: changes
-        run: |
-          echo "🔍 변경된 서비스 확인 중..."
-          
-          # 서비스 목록
-          SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
-          CHANGED_SERVICES=""
-          
-          # 수동 실행시 모든 서비스 빌드 강제
-          if [ "${{ github.event.inputs.force_build_all }}" = "true" ]; then
-            echo "🔧 강제 빌드 모드 - 모든 서비스 빌드"
-            CHANGED_SERVICES="user-service product-service order-service payment-service cart-service"
-          else
-            # 이전 커밋과 비교 (푸시 이벤트일 때)
-            if [ "${{ github.event_name }}" = "push" ]; then
-              # 푸시된 커밋들 확인
-              PREV_COMMIT="${{ github.event.before }}"
-              CURR_COMMIT="${{ github.sha }}"
-              
-              echo "📊 비교: $PREV_COMMIT...$CURR_COMMIT"
-              
-              # 각 서비스별 변경사항 확인
-              for SERVICE in "${SERVICES[@]}"; do
-                CHANGED_FILES=$(git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep "^backend/$SERVICE/" | grep -v "trigger.txt" || true)
-                
-                if [ -n "$CHANGED_FILES" ]; then
-                  echo "📝 $SERVICE 변경됨:"
-                  echo "$CHANGED_FILES" | sed 's/^/  - /'
-                  CHANGED_SERVICES="$CHANGED_SERVICES $SERVICE"
-                else
-                  echo "⏭️  $SERVICE 변경사항 없음"
-                fi
-              done
-            fi
-          fi
-          
-          # 공백 제거
-          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | xargs)
-          
-          echo "changed_services=$CHANGED_SERVICES" >> $GITHUB_OUTPUT
-          echo "✅ 최종 변경된 서비스: [$CHANGED_SERVICES]"
-          
-          if [ -z "$CHANGED_SERVICES" ]; then
-            echo "ℹ️  변경된 서비스가 없습니다."
-          fi
-        
-      - name: Determine versions for changed services
-        id: version
-        if: steps.changes.outputs.changed_services != ''
+      - name: Analyze changes and determine build strategy
+        id: analyze
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          CHANGED_SERVICES: ${{ steps.changes.outputs.changed_services }}
         run: |
+          echo "🔍 변경 분석 및 빌드 전략 결정..."
+          
           # 서비스 매핑
           declare -A SERVICE_TAGS
           SERVICE_TAGS["user-service"]="user"
@@ -97,22 +50,75 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          echo "🔍 변경된 서비스들의 버전 확인: [$CHANGED_SERVICES]"
+          SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
           
-          for SERVICE_DIR in $CHANGED_SERVICES; do
-            SERVICE_TAG="${SERVICE_TAGS[$SERVICE_DIR]}"
+          BUILD_SERVICES=""
+          RETAG_SERVICES=""
+          
+          # 강제 빌드 모드 체크
+          if [ "${{ github.event.inputs.force_build_all }}" = "true" ]; then
+            echo "🔧 강제 빌드 모드 - 모든 서비스 빌드"
+            BUILD_SERVICES="user-service product-service order-service payment-service cart-service"
+          else
+            # 변경된 서비스 확인
+            PREV_COMMIT="${{ github.event.before }}"
+            CURR_COMMIT="${{ github.sha }}"
             
-            echo "🔍 $SERVICE_TAG 기존 버전 확인..."
+            echo "📊 커밋 비교: $PREV_COMMIT...$CURR_COMMIT"
             
-            # ECR에서 기존 태그 확인
+            for SERVICE in "${SERVICES[@]}"; do
+              SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
+              
+              # 해당 서비스의 실제 코드 변경 확인 (trigger.txt 제외)
+              CHANGED_FILES=$(git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep "^backend/$SERVICE/" | grep -v "trigger.txt" || true)
+              
+              if [ -n "$CHANGED_FILES" ]; then
+                echo "🔨 $SERVICE: 코드 변경됨 → 새 빌드 필요"
+                echo "$CHANGED_FILES" | sed 's/^/  📄 /'
+                BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
+              else
+                echo "🏷️  $SERVICE: 변경 없음 → 기존 이미지 재사용"
+                RETAG_SERVICES="$RETAG_SERVICES $SERVICE"
+              fi
+            done
+          fi
+          
+          # 공백 제거
+          BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
+          RETAG_SERVICES=$(echo $RETAG_SERVICES | xargs)
+          
+          echo "build_services=$BUILD_SERVICES" >> $GITHUB_OUTPUT
+          echo "retag_services=$RETAG_SERVICES" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "📋 빌드 전략 요약:"
+          echo "🔨 새로 빌드할 서비스: [$BUILD_SERVICES]"
+          echo "🏷️  태그만 변경할 서비스: [$RETAG_SERVICES]"
+        
+      - name: Build changed services
+        if: steps.analyze.outputs.build_services != ''
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          BUILD_SERVICES: ${{ steps.analyze.outputs.build_services }}
+        run: |
+          declare -A SERVICE_TAGS
+          SERVICE_TAGS["user-service"]="user"
+          SERVICE_TAGS["product-service"]="prod" 
+          SERVICE_TAGS["order-service"]="order"
+          SERVICE_TAGS["payment-service"]="pay"
+          SERVICE_TAGS["cart-service"]="cart"
+          
+          echo "🚀 코드가 변경된 서비스들만 새로 빌드..."
+          
+          for SERVICE in $BUILD_SERVICES; do
+            SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
+            
+            # 현재 최고 버전 확인
             EXISTING_TAGS=$(aws ecr list-images \
               --repository-name kubox \
               --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
               --output text 2>/dev/null || echo "")
             
-            echo "📎 기존 태그: $EXISTING_TAGS"
-            
-            # 최고 버전 찾기
             MAX_VERSION=0
             if [[ -n "$EXISTING_TAGS" ]]; then
               for TAG in $EXISTING_TAGS; do
@@ -125,25 +131,30 @@ jobs:
               done
             fi
             
-            # 다음 버전 계산
             NEXT_VERSION=$((MAX_VERSION + 1))
             
-            echo "📦 $SERVICE_TAG: v$MAX_VERSION → v$NEXT_VERSION"
-            echo "${SERVICE_TAG}_VERSION=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+            VERSIONED_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
+            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
+            
+            echo "🔨 Building $SERVICE → $SERVICE_TAG-v$NEXT_VERSION (실제 코드 변경)"
+            
+            # Docker 빌드 및 푸시
+            docker build -t $VERSIONED_IMAGE backend/$SERVICE/
+            docker push $VERSIONED_IMAGE
+            
+            # latest 태그 업데이트
+            docker tag $VERSIONED_IMAGE $LATEST_IMAGE
+            docker push $LATEST_IMAGE
+            
+            echo "✅ $SERVICE → $SERVICE_TAG-v$NEXT_VERSION 완료"
           done
-        
-      - name: Build and push only changed services
-        if: steps.changes.outputs.changed_services != ''
+          
+      - name: Retag unchanged services
+        if: steps.analyze.outputs.retag_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          CHANGED_SERVICES: ${{ steps.changes.outputs.changed_services }}
-          USER_VERSION: ${{ steps.version.outputs.user_VERSION }}
-          PROD_VERSION: ${{ steps.version.outputs.prod_VERSION }}
-          ORDER_VERSION: ${{ steps.version.outputs.order_VERSION }}
-          PAY_VERSION: ${{ steps.version.outputs.pay_VERSION }}
-          CART_VERSION: ${{ steps.version.outputs.cart_VERSION }}
+          RETAG_SERVICES: ${{ steps.analyze.outputs.retag_services }}
         run: |
-          # 서비스 매핑
           declare -A SERVICE_TAGS
           SERVICE_TAGS["user-service"]="user"
           SERVICE_TAGS["product-service"]="prod" 
@@ -151,46 +162,30 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          declare -A VERSIONS
-          VERSIONS["user"]="$USER_VERSION"
-          VERSIONS["prod"]="$PROD_VERSION"
-          VERSIONS["order"]="$ORDER_VERSION"
-          VERSIONS["pay"]="$PAY_VERSION"
-          VERSIONS["cart"]="$CART_VERSION"
+          echo "🏷️  변경되지 않은 서비스들은 기존 이미지 재사용..."
           
-          echo "🚀 변경된 서비스만 빌드: [$CHANGED_SERVICES]"
-          
-          BUILT_COUNT=0
-          for SERVICE_DIR in $CHANGED_SERVICES; do
-            SERVICE_TAG="${SERVICE_TAGS[$SERVICE_DIR]}"
-            VERSION="${VERSIONS[$SERVICE_TAG]}"
-            CONTEXT="backend/$SERVICE_DIR"
+          for SERVICE in $RETAG_SERVICES; do
+            SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
             
-            # 버전별 이미지 태그 
-            VERSIONED_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-$VERSION"
-            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
+            # 기존 latest 이미지 확인
+            LATEST_EXISTS=$(aws ecr describe-images \
+              --repository-name kubox \
+              --image-ids imageTag=$SERVICE_TAG-latest \
+              --query 'imageDetails[0].imageTags' \
+              --output text 2>/dev/null || echo "")
             
-            echo "🔨 Building $SERVICE_DIR only (실제 코드 변경됨)"
-            echo "   📦 Version: $VERSIONED_IMAGE"
-            echo "   🏷️  Latest: $LATEST_IMAGE"
-            
-            # Docker 이미지 빌드
-            docker build -t $VERSIONED_IMAGE $CONTEXT
-            docker push $VERSIONED_IMAGE
-            
-            # latest 태그
-            docker tag $VERSIONED_IMAGE $LATEST_IMAGE
-            docker push $LATEST_IMAGE
-            
-            echo "✅ $SERVICE_DIR → $SERVICE_TAG-$VERSION 완료"
-            BUILT_COUNT=$((BUILT_COUNT + 1))
+            if [ -n "$LATEST_EXISTS" ]; then
+              echo "✅ $SERVICE: 기존 $SERVICE_TAG-latest 이미지 유지 (변경사항 없음)"
+            else
+              echo "⚠️  $SERVICE: latest 태그가 없습니다"
+            fi
           done
           
-          echo "🎉 총 $BUILT_COUNT 개 서비스 빌드 완료!"
-          
-      - name: No changes detected  
-        if: steps.changes.outputs.changed_services == ''
+      - name: Summary
         run: |
-          echo "ℹ️  변경된 백엔드 서비스가 없습니다."
-          echo "💡 불필요한 이미지 빌드를 건너뜁니다."
-          echo "🔧 특정 서비스만 빌드하려면 해당 서비스 코드를 수정하세요."
+          echo "🎯 빌드 완료 요약:"
+          echo "🔨 새로 빌드된 서비스: ${{ steps.analyze.outputs.build_services }}"
+          echo "🏷️  재사용된 서비스: ${{ steps.analyze.outputs.retag_services }}"
+          echo ""
+          echo "💡 코드 변경이 있는 서비스만 새 이미지를 생성했습니다."
+          echo "💡 변경이 없는 서비스는 기존 이미지를 그대로 사용합니다."
