@@ -99,13 +99,16 @@ jobs:
               NEXT_VERSION=1
               echo "🆕 첫 번째 버전: v1"
             else
-              # 가장 높은 버전 번호 추출
-              HIGHEST_TAG=$(echo "$EXISTING_TAGS" | tail -1)
-              CURRENT_VERSION=$(echo "$HIGHEST_TAG" | sed "s/$SERVICE_TAG-v//")
-              NEXT_VERSION=$((CURRENT_VERSION + 1))
-              
+              # 버전 순서대로 정렬 후 가장 높은 번호 추출
               echo "📦 기존 버전들:"
               echo "$EXISTING_TAGS" | sed 's/^/  ✅ /'
+              
+              # 정확한 버전 번호 추출 (오름차순 정렬)
+              VERSION_NUMBERS=$(echo "$EXISTING_TAGS" | sed "s/$SERVICE_TAG-v//" | sort -n)
+              HIGHEST_VERSION=$(echo "$VERSION_NUMBERS" | tail -1)
+              NEXT_VERSION=$((HIGHEST_VERSION + 1))
+              
+              echo "🔢 기존 최고 버전: v$HIGHEST_VERSION"
               echo "🆕 새 버전: v$NEXT_VERSION"
             fi
             
