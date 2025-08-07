@@ -2,9 +2,8 @@ package com.shop.user.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.event.EventListener;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -12,24 +11,16 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
 import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
 import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
-@Configuration
-public class SecretsManagerConfig {
+public class SecretsManagerConfig implements EnvironmentPostProcessor {
     
     private static final Logger log = LoggerFactory.getLogger(SecretsManagerConfig.class);
     
-    private final ConfigurableEnvironment environment;
-    
-    public SecretsManagerConfig(ConfigurableEnvironment environment) {
-        this.environment = environment;
-    }
-    
-    @EventListener(ApplicationReadyEvent.class)
-    public void loadSecretsOnStartup() {
+    @Override
+    public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         try {
             log.info("🔐 AWS Secrets Manager에서 설정 로드 중...");
             
