@@ -29,52 +29,60 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Detect changed services and build
+      - name: Detect services to build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          # 변경된 파일 확인
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
+          ALL_SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
+          BUILD_SERVICES=""
           
-          # 변경된 서비스 찾기
-          CHANGED_SERVICES=""
+          # ECR에 이미지가 하나라도 있는지 확인
+          TOTAL_IMAGES=$(aws ecr describe-images \
+            --repository-name kubox \
+            --query "length(imageDetails)" \
+            --output text 2>/dev/null || echo "0")
           
-          if echo "$CHANGED_FILES" | grep -q "backend/user-service/"; then
-            CHANGED_SERVICES="$CHANGED_SERVICES user-service"
+          echo "Total images in ECR: $TOTAL_IMAGES"
+          
+          if [ "$TOTAL_IMAGES" = "0" ]; then
+            echo "🆕 No images found in ECR. Building ALL services for first time."
+            BUILD_SERVICES="${ALL_SERVICES[@]}"
+          else
+            echo "📋 Images exist. Checking for changed services only."
+            
+            # 변경된 파일 확인
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            
+            # 변경된 서비스 찾기
+            for SERVICE in "${ALL_SERVICES[@]}"; do
+              if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
+                BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
+              fi
+            done
+            
+            BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
           fi
           
-          if echo "$CHANGED_FILES" | grep -q "backend/product-service/"; then
-            CHANGED_SERVICES="$CHANGED_SERVICES product-service"
-          fi
-          
-          if echo "$CHANGED_FILES" | grep -q "backend/order-service/"; then
-            CHANGED_SERVICES="$CHANGED_SERVICES order-service"
-          fi
-          
-          if echo "$CHANGED_FILES" | grep -q "backend/payment-service/"; then
-            CHANGED_SERVICES="$CHANGED_SERVICES payment-service"
-          fi
-          
-          if echo "$CHANGED_FILES" | grep -q "backend/cart-service/"; then
-            CHANGED_SERVICES="$CHANGED_SERVICES cart-service"
-          fi
-          
-          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | xargs)
-          
-          if [ -z "$CHANGED_SERVICES" ]; then
-            echo "No service changes detected. Skipping build."
+          if [ -z "$BUILD_SERVICES" ]; then
+            echo "No services to build. Exiting."
             exit 0
           fi
           
-          echo "Changed services: $CHANGED_SERVICES"
+          echo "Services to build: $BUILD_SERVICES"
+          echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
           
+      - name: Build services
+        if: env.build_services != ''
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
           # 고유성을 위한 타임스탬프 (내부 빌드용)
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           BUILD_NUMBER="${{ github.run_number }}"
           
-          for SERVICE in $CHANGED_SERVICES; do
+          for SERVICE in ${{ env.build_services }}; do
             echo "=== Processing $SERVICE ==="
             
             # 현재 서비스의 기존 버전 확인
@@ -150,8 +158,8 @@ jobs:
         run: |
           echo ""
           echo "🎉 Deployment Summary:"
-          echo "✅ Changed services were built with incremental versions"
-          echo "📋 Version logic:"
-          echo "   - No existing image: Creates v1"
-          echo "   - Existing images: Creates next version (v2, v3, ...)"
+          echo "✅ Built services: ${{ env.build_services }}"
+          echo "📋 Build logic:"
+          echo "   - No images in ECR: Build ALL services as v1"
+          echo "   - Images exist: Build only CHANGED services"
           echo "   - Latest tag always points to newest version"
