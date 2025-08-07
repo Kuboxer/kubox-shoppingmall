@@ -70,105 +70,79 @@ jobs:
           
           echo "Changed services: $CHANGED_SERVICES"
           
+          # 현재 시간을 버전으로 사용 (절대 중복되지 않음)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BUILD_NUMBER="${{ github.run_number }}"
+          
           for SERVICE in $CHANGED_SERVICES; do
             echo "=== Processing $SERVICE ==="
             
-            # 현재 ECR의 모든 태그 조회
-            echo "Current ECR tags for $SERVICE:"
-            ALL_TAGS=$(aws ecr describe-images \
-              --repository-name kubox \
-              --query "imageDetails[?contains(imageTags, '${SERVICE}')].imageTags[]" \
-              --output text 2>/dev/null | tr '\t' '\n' | sort || echo "")
+            # 고유한 버전 태그 생성 (타임스탬프 + 빌드번호)
+            VERSION_TAG="${SERVICE}-${TIMESTAMP}-${BUILD_NUMBER}"
+            LATEST_TAG="${SERVICE}-latest"
             
-            echo "$ALL_TAGS"
+            IMAGE_URI="$ECR_REGISTRY/kubox:$VERSION_TAG"
+            LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
             
-            # 현재 서비스의 버전 태그들만 추출 (정확한 패턴)
-            VERSION_TAGS=$(echo "$ALL_TAGS" | grep "^${SERVICE}-v[0-9]*$" | sort -V || echo "")
-            
-            echo "Version tags for $SERVICE:"
-            echo "$VERSION_TAGS"
-            
-            # 최고 버전 찾기
-            if [ -z "$VERSION_TAGS" ]; then
-              NEXT_VERSION=1
-              echo "No existing versions found. Starting with v1"
-            else
-              # 가장 높은 버전 번호 추출
-              LATEST_VERSION=$(echo "$VERSION_TAGS" | sed "s/${SERVICE}-v//" | sort -n | tail -1)
-              NEXT_VERSION=$((LATEST_VERSION + 1))
-              echo "Latest version: v$LATEST_VERSION"
-              echo "Next version will be: v$NEXT_VERSION"
-            fi
-            
-            # 새 버전 태그 생성
-            NEW_TAG="${SERVICE}-v${NEXT_VERSION}"
-            IMAGE_URI="$ECR_REGISTRY/kubox:$NEW_TAG"
-            
-            echo "Building new image with tag: $NEW_TAG"
-            
-            # 고유한 빌드 컨텍스트 생성 (태그 충돌 방지)
-            BUILD_CONTEXT="build-${SERVICE}-$(date +%s)"
-            mkdir -p "$BUILD_CONTEXT"
-            cp -r backend/$SERVICE/* "$BUILD_CONTEXT/"
-            
-            # 빌드 고유성 보장
-            echo "BUILD_TIME=$(date)" >> "$BUILD_CONTEXT/.buildinfo"
-            echo "BUILD_VERSION=$NEW_TAG" >> "$BUILD_CONTEXT/.buildinfo"
-            echo "COMMIT_SHA=${{ github.sha }}" >> "$BUILD_CONTEXT/.buildinfo"
+            echo "Building with unique tag: $VERSION_TAG"
             
             # 도커 빌드
-            cd "$BUILD_CONTEXT"
+            cd backend/$SERVICE
+            
             if docker build -t "$IMAGE_URI" .; then
-              echo "✅ Build successful for $NEW_TAG"
+              echo "✅ Build successful for $VERSION_TAG"
               
-              # 이미지 푸시
+              # 버전 태그 푸시
               if docker push "$IMAGE_URI"; then
-                echo "✅ Successfully pushed $NEW_TAG"
+                echo "✅ Successfully pushed $VERSION_TAG"
                 
-                # latest 태그는 별도 이미지로 처리
-                LATEST_TAG="${SERVICE}-latest"
-                LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
-                
-                # latest 태그를 새 이미지에 적용
+                # latest 태그 생성 및 푸시
                 docker tag "$IMAGE_URI" "$LATEST_URI"
                 docker push "$LATEST_URI"
-                echo "✅ Updated latest tag to point to $NEW_TAG"
+                echo "✅ Updated latest tag"
                 
-                # 검증: 새로 생성된 태그 확인
-                echo "Verifying new tag..."
-                aws ecr describe-images \
+                # 추가로 간단한 버전 태그도 생성 (v1, v2, v3...)
+                # 현재 서비스의 간단한 버전 태그들 조회
+                SIMPLE_VERSIONS=$(aws ecr describe-images \
                   --repository-name kubox \
-                  --image-ids imageTag="$NEW_TAG" \
-                  --query "imageDetails[0].imageTags" \
-                  --output text 2>/dev/null && echo "✅ Tag verified in ECR"
+                  --query "imageDetails[].imageTags[]" \
+                  --output text 2>/dev/null | \
+                  tr '\t' '\n' | \
+                  grep "^${SERVICE}-v[0-9]*$" | \
+                  sed "s/${SERVICE}-v//" | \
+                  sort -n || echo "")
+                
+                if [ -z "$SIMPLE_VERSIONS" ]; then
+                  NEXT_SIMPLE_VERSION=1
+                else
+                  LATEST_SIMPLE=$(echo "$SIMPLE_VERSIONS" | tail -1)
+                  NEXT_SIMPLE_VERSION=$((LATEST_SIMPLE + 1))
+                fi
+                
+                SIMPLE_TAG="${SERVICE}-v${NEXT_SIMPLE_VERSION}"
+                SIMPLE_URI="$ECR_REGISTRY/kubox:$SIMPLE_TAG"
+                
+                # 간단한 버전 태그도 추가
+                docker tag "$IMAGE_URI" "$SIMPLE_URI"
+                docker push "$SIMPLE_URI"
+                echo "✅ Also tagged as $SIMPLE_TAG"
                 
               else
-                echo "❌ Failed to push $NEW_TAG"
+                echo "❌ Failed to push $VERSION_TAG"
               fi
             else
               echo "❌ Build failed for $SERVICE"
             fi
             
-            cd ..
-            rm -rf "$BUILD_CONTEXT"
-            
-            echo "✅ Completed processing $SERVICE"
+            cd ../..
+            echo "✅ Completed $SERVICE with tags: $VERSION_TAG, $SIMPLE_TAG, latest"
             echo "---"
           done
           
-          echo ""
-          echo "🎉 Build completed!"
-          echo "Changed services: $CHANGED_SERVICES"
-          
-      - name: Final verification
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      - name: Show final state
         run: |
-          echo "Final ECR state verification..."
-          
-          # 모든 kubox 이미지 태그 조회
-          echo "All current tags in kubox repository:"
-          aws ecr describe-images \
-            --repository-name kubox \
-            --query "imageDetails[].imageTags[]" \
-            --output text 2>/dev/null | tr '\t' '\n' | sort || echo "No images found"
+          echo "🎉 Build completed!"
+          echo "Each service now has:"
+          echo "  📦 Unique timestamp version (never conflicts)"
+          echo "  🔢 Simple version (v1, v2, v3...)"
+          echo "  🏷️  Latest tag"
