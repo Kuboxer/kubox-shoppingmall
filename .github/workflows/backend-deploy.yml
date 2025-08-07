@@ -1,4 +1,4 @@
-name: Smart Build - Only Build When Code Changes
+name: Smart Build - Fixed Tagging Issue
 
 on:
   workflow_dispatch:
@@ -35,67 +35,38 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
         
-      - name: Analyze changes and determine build strategy
+      - name: Analyze changes
         id: analyze
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          echo "🔍 변경 분석 및 빌드 전략 결정..."
-          
-          # 서비스 매핑
-          declare -A SERVICE_TAGS
-          SERVICE_TAGS["user-service"]="user"
-          SERVICE_TAGS["product-service"]="prod" 
-          SERVICE_TAGS["order-service"]="order"
-          SERVICE_TAGS["payment-service"]="pay"
-          SERVICE_TAGS["cart-service"]="cart"
+          echo "🔍 변경 분석..."
           
           SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
-          
           BUILD_SERVICES=""
-          RETAG_SERVICES=""
           
-          # 강제 빌드 모드 체크
           if [ "${{ github.event.inputs.force_build_all }}" = "true" ]; then
-            echo "🔧 강제 빌드 모드 - 모든 서비스 빌드"
+            echo "🔧 강제 빌드 모드"
             BUILD_SERVICES="user-service product-service order-service payment-service cart-service"
           else
-            # 변경된 서비스 확인
             PREV_COMMIT="${{ github.event.before }}"
             CURR_COMMIT="${{ github.sha }}"
             
-            echo "📊 커밋 비교: $PREV_COMMIT...$CURR_COMMIT"
-            
             for SERVICE in "${SERVICES[@]}"; do
-              SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
-              
-              # 해당 서비스의 실제 코드 변경 확인 (trigger.txt 제외)
               CHANGED_FILES=$(git diff --name-only $PREV_COMMIT $CURR_COMMIT | grep "^backend/$SERVICE/" | grep -v "trigger.txt" || true)
               
               if [ -n "$CHANGED_FILES" ]; then
-                echo "🔨 $SERVICE: 코드 변경됨 → 새 빌드 필요"
-                echo "$CHANGED_FILES" | sed 's/^/  📄 /'
+                echo "🔨 $SERVICE: 변경됨"
                 BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
               else
-                echo "🏷️  $SERVICE: 변경 없음 → 기존 이미지 재사용"
-                RETAG_SERVICES="$RETAG_SERVICES $SERVICE"
+                echo "⏭️  $SERVICE: 변경 없음"
               fi
             done
           fi
           
-          # 공백 제거
           BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
-          RETAG_SERVICES=$(echo $RETAG_SERVICES | xargs)
-          
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_OUTPUT
-          echo "retag_services=$RETAG_SERVICES" >> $GITHUB_OUTPUT
-          
-          echo ""
-          echo "📋 빌드 전략 요약:"
-          echo "🔨 새로 빌드할 서비스: [$BUILD_SERVICES]"
-          echo "🏷️  태그만 변경할 서비스: [$RETAG_SERVICES]"
+          echo "최종 빌드 대상: [$BUILD_SERVICES]"
         
-      - name: Build changed services
+      - name: Build and tag services properly
         if: steps.analyze.outputs.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -108,16 +79,21 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          echo "🚀 코드가 변경된 서비스들만 새로 빌드..."
+          echo "🚀 빌드 및 태깅 시작..."
           
           for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
+            echo ""
+            echo "🔨 처리 중: $SERVICE → $SERVICE_TAG"
             
             # 현재 최고 버전 확인
+            echo "📋 기존 버전 확인..."
             EXISTING_TAGS=$(aws ecr list-images \
               --repository-name kubox \
               --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].imageTags[]" \
               --output text 2>/dev/null || echo "")
+            
+            echo "기존 태그들: $EXISTING_TAGS"
             
             MAX_VERSION=0
             if [[ -n "$EXISTING_TAGS" ]]; then
@@ -132,29 +108,70 @@ jobs:
             fi
             
             NEXT_VERSION=$((MAX_VERSION + 1))
+            echo "버전: v$MAX_VERSION → v$NEXT_VERSION"
             
-            VERSIONED_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
-            LATEST_IMAGE="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
+            # 이미지 태그 정의
+            TEMP_TAG="$ECR_REGISTRY/kubox:temp-$SERVICE_TAG-$(date +%s)"
+            VERSIONED_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
+            LATEST_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
             
-            echo "🔨 Building $SERVICE → $SERVICE_TAG-v$NEXT_VERSION (실제 코드 변경)"
+            echo "🏗️  Docker 빌드..."
+            echo "임시 태그: $TEMP_TAG"
             
-            # Docker 빌드 및 푸시
-            docker build -t $VERSIONED_IMAGE backend/$SERVICE/
-            docker push $VERSIONED_IMAGE
+            # 1. 임시 태그로 빌드
+            if docker build -t "$TEMP_TAG" "backend/$SERVICE/"; then
+              echo "✅ 빌드 성공"
+            else
+              echo "❌ 빌드 실패"
+              exit 1
+            fi
             
-            # latest 태그 업데이트
-            docker tag $VERSIONED_IMAGE $LATEST_IMAGE
-            docker push $LATEST_IMAGE
+            # 2. 버전 태그 생성 및 푸시
+            echo "🏷️  버전 태그 생성: $VERSIONED_TAG"
+            docker tag "$TEMP_TAG" "$VERSIONED_TAG"
             
-            echo "✅ $SERVICE → $SERVICE_TAG-v$NEXT_VERSION 완료"
+            echo "📤 버전 태그 푸시..."
+            if docker push "$VERSIONED_TAG"; then
+              echo "✅ 버전 태그 푸시 성공"
+            else
+              echo "❌ 버전 태그 푸시 실패"
+              exit 1
+            fi
+            
+            # 3. latest 태그 생성 및 푸시
+            echo "🏷️  latest 태그 생성: $LATEST_TAG"
+            docker tag "$TEMP_TAG" "$LATEST_TAG"
+            
+            echo "📤 latest 태그 푸시..."
+            if docker push "$LATEST_TAG"; then
+              echo "✅ latest 태그 푸시 성공"
+            else
+              echo "❌ latest 태그 푸시 실패"
+              exit 1
+            fi
+            
+            # 4. 임시 이미지 정리
+            docker rmi "$TEMP_TAG" || true
+            
+            echo "🎉 $SERVICE 완료: $SERVICE_TAG-v$NEXT_VERSION"
+            
+            # ECR에서 태그 확인
+            echo "🔍 ECR 태그 확인..."
+            aws ecr describe-images \
+              --repository-name kubox \
+              --image-ids imageTag="$SERVICE_TAG-v$NEXT_VERSION" \
+              --query 'imageDetails[0].imageTags' \
+              --output table || echo "태그 확인 실패"
           done
           
-      - name: Retag unchanged services
-        if: steps.analyze.outputs.retag_services != ''
+      - name: Verify all tags
+        if: steps.analyze.outputs.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          RETAG_SERVICES: ${{ steps.analyze.outputs.retag_services }}
+          BUILD_SERVICES: ${{ steps.analyze.outputs.build_services }}
         run: |
+          echo "🔍 최종 태그 검증..."
+          
           declare -A SERVICE_TAGS
           SERVICE_TAGS["user-service"]="user"
           SERVICE_TAGS["product-service"]="prod" 
@@ -162,30 +179,22 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          echo "🏷️  변경되지 않은 서비스들은 기존 이미지 재사용..."
-          
-          for SERVICE in $RETAG_SERVICES; do
+          for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
+            echo "🔍 $SERVICE_TAG 태그 확인..."
             
-            # 기존 latest 이미지 확인
-            LATEST_EXISTS=$(aws ecr describe-images \
+            # 모든 태그 확인
+            ALL_TAGS=$(aws ecr list-images \
               --repository-name kubox \
-              --image-ids imageTag=$SERVICE_TAG-latest \
-              --query 'imageDetails[0].imageTags' \
-              --output text 2>/dev/null || echo "")
+              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG')].imageTags[]" \
+              --output text 2>/dev/null || echo "없음")
             
-            if [ -n "$LATEST_EXISTS" ]; then
-              echo "✅ $SERVICE: 기존 $SERVICE_TAG-latest 이미지 유지 (변경사항 없음)"
-            else
-              echo "⚠️  $SERVICE: latest 태그가 없습니다"
-            fi
+            echo "$SERVICE_TAG 관련 태그들: $ALL_TAGS"
           done
           
       - name: Summary
         run: |
-          echo "🎯 빌드 완료 요약:"
-          echo "🔨 새로 빌드된 서비스: ${{ steps.analyze.outputs.build_services }}"
-          echo "🏷️  재사용된 서비스: ${{ steps.analyze.outputs.retag_services }}"
+          echo "🎯 빌드 요약:"
+          echo "빌드된 서비스: ${{ steps.analyze.outputs.build_services }}"
           echo ""
-          echo "💡 코드 변경이 있는 서비스만 새 이미지를 생성했습니다."
-          echo "💡 변경이 없는 서비스는 기존 이미지를 그대로 사용합니다."
+          echo "✅ 모든 이미지가 올바른 태그와 함께 생성되었습니다."
