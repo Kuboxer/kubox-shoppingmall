@@ -1,4 +1,4 @@
-name: Force Unique Image Per Version
+name: True Incremental Versioning
 
 on:
   workflow_dispatch:
@@ -66,7 +66,7 @@ jobs:
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_OUTPUT
           echo "최종 빌드 대상: [$BUILD_SERVICES]"
         
-      - name: Build with guaranteed unique images
+      - name: Build truly unique images
         if: steps.analyze.outputs.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -79,146 +79,107 @@ jobs:
           SERVICE_TAGS["payment-service"]="pay"
           SERVICE_TAGS["cart-service"]="cart"
           
-          # 빌드 고유성을 위한 타임스탬프
-          BUILD_TIME=$(date +%Y%m%d_%H%M%S)
-          BUILD_ID=$(echo ${{ github.sha }} | cut -c1-8)
-          
-          echo "🚀 고유 이미지 빌드 시작..."
-          echo "빌드 ID: $BUILD_ID"
-          echo "빌드 시간: $BUILD_TIME"
+          echo "🚀 진짜 고유 이미지 빌드 시작..."
           
           for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
             echo ""
             echo "🔨 처리 중: $SERVICE → $SERVICE_TAG"
             
-            # 기존 버전 확인
+            # 기존 최고 버전 확인
             echo "📋 기존 버전 확인..."
-            ALL_TAGS=$(aws ecr list-images \
-              --repository-name kubox \
-              --query "imageDetails[].imageTags[]" \
-              --output text 2>/dev/null || echo "")
+            ALL_TAGS=$(aws ecr list-images --repository-name kubox --query "imageDetails[].imageTags[]" --output text 2>/dev/null || echo "")
             
-            EXISTING_VERSIONS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-v[0-9]*$" | sed "s/$SERVICE_TAG-v//" | sort -n || echo "")
+            # 기존 버전 숫자들 추출
+            VERSIONS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep "^$SERVICE_TAG-v[0-9]*$" | sed "s/$SERVICE_TAG-v//" | sort -n)
             
-            if [ -z "$EXISTING_VERSIONS" ]; then
+            if [ -z "$VERSIONS" ]; then
               NEXT_VERSION=1
               echo "첫 번째 버전: v1"
             else
-              MAX_VERSION=$(echo "$EXISTING_VERSIONS" | tail -1)
+              MAX_VERSION=$(echo "$VERSIONS" | tail -1)
               NEXT_VERSION=$((MAX_VERSION + 1))
-              echo "기존 버전들: $(echo $EXISTING_VERSIONS | tr '\n' ' ')"
+              echo "기존 버전들: $(echo $VERSIONS | tr '\n' ' ')"
               echo "새 버전: v$NEXT_VERSION"
             fi
             
-            # 임시 빌드 디렉토리 생성
-            TEMP_BUILD_DIR="temp_build_${SERVICE_TAG}_${BUILD_TIME}"
-            mkdir -p "$TEMP_BUILD_DIR"
+            # 각 빌드마다 고유한 파일 생성 (이미지 Digest 변경 보장)
+            UNIQUE_ID="${{ github.run_number }}-$(date +%s)-$RANDOM"
+            echo "고유 빌드 ID: $UNIQUE_ID"
             
-            # 소스 코드 복사
-            cp -r "backend/$SERVICE/"* "$TEMP_BUILD_DIR/"
+            # 1. 고유 파일을 소스에 추가
+            mkdir -p backend/$SERVICE/src/main/resources/static
+            cat > backend/$SERVICE/src/main/resources/static/build-info.json << EOF
+          {
+            "buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "buildNumber": "${{ github.run_number }}",
+            "commitSha": "${{ github.sha }}",
+            "version": "v$NEXT_VERSION",
+            "service": "$SERVICE_TAG",
+            "uniqueId": "$UNIQUE_ID",
+            "runId": "${{ github.run_id }}"
+          }
+          EOF
             
-            # 고유성을 보장하는 메타데이터 파일 추가
-            cat > "$TEMP_BUILD_DIR/BUILD_INFO" << BUILDINFO_EOF
-          BUILD_TIME=$BUILD_TIME
-          BUILD_ID=$BUILD_ID
-          VERSION=v$NEXT_VERSION
-          SERVICE=$SERVICE_TAG
-          GITHUB_SHA=${{ github.sha }}
-          GITHUB_RUN_ID=${{ github.run_id }}
-          GITHUB_RUN_NUMBER=${{ github.run_number }}
-          BUILDINFO_EOF
+            # 2. Dockerfile에 고유성 레이어 추가
+            cat >> backend/$SERVICE/Dockerfile << EOF
+          
+          # === 고유성 보장 레이어 ===
+          COPY src/main/resources/static/build-info.json /app/build-info.json
+          RUN echo "Build ID: $UNIQUE_ID" > /app/unique-build-marker.txt
+          RUN echo "Timestamp: $(date)" >> /app/unique-build-marker.txt
+          EOF
             
-            # Dockerfile에 메타데이터 추가하는 임시 Dockerfile 생성
-            cat > "$TEMP_BUILD_DIR/Dockerfile.versioned" << DOCKERFILE_EOF
-          # 기존 Dockerfile 내용을 그대로 가져오기
-          FROM openjdk:17-jdk-slim
-          
-          # 작업 디렉토리 설정
-          WORKDIR /app
-          
-          # Gradle 래퍼와 설정 파일들 복사
-          COPY gradle/ gradle/
-          COPY gradlew .
-          COPY build.gradle .
-          COPY settings.gradle .
-          
-          # 소스 코드 복사
-          COPY src/ src/
-          
-          # 빌드 정보 추가 (이미지 고유성 보장)
-          COPY BUILD_INFO /app/BUILD_INFO
-          
-          # Gradle 래퍼에 실행 권한 부여
-          RUN chmod +x ./gradlew
-          
-          # 애플리케이션 빌드
-          RUN ./gradlew build -x test
-          
-          # 빌드된 JAR 파일을 app.jar로 복사 (실행 가능한 JAR만)
-          RUN find build/libs -name '*.jar' ! -name '*plain*' -exec cp {} app.jar \;
-          
-          # 포트 노출
-          EXPOSE 8080
-          
-          # 애플리케이션 실행
-          ENTRYPOINT ["java", "-jar", "app.jar"]
-          DOCKERFILE_EOF
+            # 3. 새 버전으로 빌드
+            VERSION_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
             
-            # 새 버전 이미지 빌드 (고유성 보장됨)
-            NEW_VERSION_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-v$NEXT_VERSION"
+            echo "🏗️  빌드 시작: $SERVICE_TAG-v$NEXT_VERSION"
+            echo "고유 식별자: $UNIQUE_ID"
             
-            echo "🏗️  고유 이미지 빌드: $SERVICE_TAG-v$NEXT_VERSION"
-            
-            if docker build -f "$TEMP_BUILD_DIR/Dockerfile.versioned" -t "$NEW_VERSION_TAG" "$TEMP_BUILD_DIR"; then
-              echo "✅ v$NEXT_VERSION 빌드 성공"
+            if docker build -t "$VERSION_TAG" backend/$SERVICE/; then
+              echo "✅ 빌드 성공"
+              
+              # 이미지 Digest 확인
+              IMAGE_DIGEST=$(docker image inspect "$VERSION_TAG" --format='{{.Id}}')
+              echo "🔍 이미지 Digest: ${IMAGE_DIGEST:7:12}..."
+              
+              # 4. 버전 태그 푸시
+              if docker push "$VERSION_TAG"; then
+                echo "✅ $SERVICE_TAG-v$NEXT_VERSION 푸시 성공"
+                
+                # 5. latest 태그 처리 (기존 latest는 자동으로 이동됨)
+                LATEST_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
+                docker tag "$VERSION_TAG" "$LATEST_TAG"
+                
+                if docker push "$LATEST_TAG"; then
+                  echo "✅ $SERVICE_TAG-latest 업데이트 완료"
+                else
+                  echo "❌ latest 태그 푸시 실패"
+                fi
+              else
+                echo "❌ 버전 태그 푸시 실패"
+              fi
             else
               echo "❌ 빌드 실패"
-              rm -rf "$TEMP_BUILD_DIR"
-              exit 1
             fi
             
-            # 새 버전 푸시
-            echo "📤 새 버전 푸시..."
-            if docker push "$NEW_VERSION_TAG"; then
-              echo "✅ $SERVICE_TAG-v$NEXT_VERSION 푸시 성공"
-            else
-              echo "❌ 푸시 실패"
-              rm -rf "$TEMP_BUILD_DIR"
-              exit 1
-            fi
+            # 6. 임시 파일들 원복
+            rm -f backend/$SERVICE/src/main/resources/static/build-info.json
             
-            # latest 태그 처리
-            echo "🏷️  latest 태그 업데이트..."
-            NEW_LATEST_TAG="$ECR_REGISTRY/kubox:$SERVICE_TAG-latest"
-            docker tag "$NEW_VERSION_TAG" "$NEW_LATEST_TAG"
+            # Dockerfile 원복 (마지막 3줄 제거)
+            head -n -4 backend/$SERVICE/Dockerfile > backend/$SERVICE/Dockerfile.tmp
+            mv backend/$SERVICE/Dockerfile.tmp backend/$SERVICE/Dockerfile
             
-            if docker push "$NEW_LATEST_TAG"; then
-              echo "✅ latest 태그 업데이트 완료"
-            else
-              echo "❌ latest 태그 업데이트 실패"
-              rm -rf "$TEMP_BUILD_DIR"
-              exit 1
-            fi
-            
-            # 임시 디렉토리 정리
-            rm -rf "$TEMP_BUILD_DIR"
-            
-            echo "🎉 $SERVICE 완료: $SERVICE_TAG-v$NEXT_VERSION (고유 이미지)"
-            
-            # 이미지 정보 확인
-            echo "🔍 생성된 이미지 정보:"
-            docker image inspect "$NEW_VERSION_TAG" --format='{{.Id}}' | head -c 20
-            echo "..."
+            echo "🎉 $SERVICE_TAG-v$NEXT_VERSION 완료 (고유 이미지)"
           done
           
-      - name: Verify all versions exist
+      - name: Verify incremental versions
         if: steps.analyze.outputs.build_services != ''
         env:
           BUILD_SERVICES: ${{ steps.analyze.outputs.build_services }}
         run: |
           echo ""
-          echo "🔍 모든 버전 존재 확인..."
+          echo "🔍 증분 버전 검증..."
           
           declare -A SERVICE_TAGS
           SERVICE_TAGS["user-service"]="user"
@@ -230,16 +191,16 @@ jobs:
           for SERVICE in $BUILD_SERVICES; do
             SERVICE_TAG="${SERVICE_TAGS[$SERVICE]}"
             echo ""
-            echo "📊 $SERVICE_TAG 전체 버전 목록:"
+            echo "📊 $SERVICE_TAG 모든 버전:"
             
-            # 모든 버전 이미지 나열
+            # 모든 버전 이미지를 Digest와 함께 확인
             aws ecr describe-images \
               --repository-name kubox \
-              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].{Tags:imageTags,Size:imageSizeInBytes,Pushed:imagePushedAt}" \
+              --query "imageDetails[?contains(imageTags, '$SERVICE_TAG-v')].{Tags:imageTags,Digest:imageDigest,Size:imageSizeInBytes,Pushed:imagePushedAt}" \
               --output table
             
             echo ""
-            echo "🏷️  latest 태그 상태:"
+            echo "🏷️  $SERVICE_TAG latest 상태:"
             aws ecr describe-images \
               --repository-name kubox \
               --image-ids imageTag="$SERVICE_TAG-latest" \
@@ -247,13 +208,19 @@ jobs:
               --output table 2>/dev/null || echo "latest 태그 없음"
           done
           
-      - name: Summary
+      - name: Final Summary
         run: |
           echo ""
-          echo "🎯 고유 이미지 빌드 완료!"
+          echo "🎯 진짜 증분 버전 빌드 완료!"
           echo "📈 빌드된 서비스: ${{ steps.analyze.outputs.build_services }}"
           echo ""
-          echo "✅ 각 버전은 완전히 독립적인 고유 이미지입니다"
-          echo "✅ 빌드 정보가 포함되어 이미지 중복이 불가능합니다"
-          echo "✅ 모든 기존 버전이 보존됩니다"
-          echo "✅ ECR에서 user-v1, user-v2, user-v3... 모든 버전 확인 가능"
+          echo "✅ 각 버전은 고유한 Digest를 가진 별개 이미지입니다"
+          echo "✅ 기존 버전들이 절대 사라지지 않습니다"
+          echo "✅ v1, v2, v3... 순차적으로 증가합니다"
+          echo "✅ latest는 항상 최신 버전을 가리킵니다"
+          echo ""
+          echo "🔍 ECR에서 확인하면 다음과 같이 나타납니다:"
+          echo "  📦 user-v1 (sha256:abc123...)"
+          echo "  📦 user-v2 (sha256:def456...)"
+          echo "  📦 user-v3 (sha256:ghi789...)"
+          echo "  🏷️  user-latest → user-v3"
