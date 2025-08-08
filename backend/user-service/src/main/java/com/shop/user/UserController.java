@@ -137,6 +137,14 @@ public class UserController {
     }
     
     /**
+     * CORS Preflight 요청 처리
+     */
+    @RequestMapping(method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        return ResponseEntity.ok().build();
+    }
+    
+    /**
      * 서비스 상태 체크
      */
     @GetMapping("/health")
