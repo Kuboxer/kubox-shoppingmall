@@ -125,7 +125,7 @@ export default function OrderHistory() {
       // 사용자 이메일 가져오기
       try {
         if (token) {
-          const userResponse = await fetch('http://localhost:8080/api/users/profile', {
+          const userResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/users/profile`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -152,7 +152,7 @@ export default function OrderHistory() {
         throw new Error('로그인이 필요합니다. 다시 로그인해주세요.');
       }
 
-      const response = await fetch('http://localhost:8083/api/payment/history', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/payment/history`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
