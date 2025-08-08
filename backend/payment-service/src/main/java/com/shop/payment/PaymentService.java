@@ -3,6 +3,7 @@ package com.shop.payment;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class PaymentService {
@@ -27,9 +29,29 @@ public class PaymentService {
     @Autowired
     private PaymentRepository paymentRepository;
     
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+    
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private String accessToken;
+    
+    // Redis 키 생성 메서드들
+    private String getPaymentSessionKey(String orderId) {
+        return "payment:session:" + orderId;
+    }
+    
+    private String getPaymentLockKey(String userEmail, Object amount) {
+        return "payment:lock:" + userEmail + ":" + amount;
+    }
+    
+    private String getPaymentVerifyKey(String receiptId) {
+        return "payment:verify:" + receiptId;
+    }
+    
+    private String getPaymentProcessingKey(String orderId) {
+        return "payment:processing:" + orderId;
+    }
     
     /**
      * 부트페이 토큰 발급
@@ -73,45 +95,91 @@ public class PaymentService {
     @Transactional
     public Map<String, Object> verifyPayment(String receiptId, String userEmail, Map<String, Object> frontendData) throws Exception {
         
-        // 중복 결제 확인
-        if (paymentRepository.findByPaymentKey(receiptId).isPresent()) {
+        // Redis에서 검증 결과 캐시 확인
+        String verifyKey = getPaymentVerifyKey(receiptId);
+        Object cachedResult = redisTemplate.opsForValue().get(verifyKey);
+        if (cachedResult != null) {
+            System.out.println("Redis에서 검증 결과 반환: " + receiptId);
+            return (Map<String, Object>) cachedResult;
+        }
+        
+        // 중복 결제 방지 - Redis 락 확인
+        Object amount = frontendData != null ? frontendData.getOrDefault("amount", frontendData.getOrDefault("price", 0)) : 0;
+        String lockKey = getPaymentLockKey(userEmail, amount);
+        
+        // 1분간 동일 금액 결제 차단
+        Boolean lockSet = redisTemplate.opsForValue().setIfAbsent(lockKey, "processing", 60, TimeUnit.SECONDS);
+        if (Boolean.FALSE.equals(lockSet)) {
+            Map<String, Object> lockResult = new HashMap<>();
+            lockResult.put("status", "error");
+            lockResult.put("message", "동일 금액의 결제가 진행 중입니다. 잠시 후 다시 시도해주세요.");
+            return lockResult;
+        }
+        
+        try {
+            // 중복 결제 확인
+            if (paymentRepository.findByPaymentKey(receiptId).isPresent()) {
+                Map<String, Object> result = new HashMap<>();
+                result.put("status", "success");
+                result.put("message", "이미 처리된 결제입니다.");
+                
+                // 결과 캐시 (1시간)
+                redisTemplate.opsForValue().set(verifyKey, result, 1, TimeUnit.HOURS);
+                return result;
+            }
+            
+            // 결제 세션 저장
+            String orderId = (String) frontendData.getOrDefault("order_id", "ORDER_" + System.currentTimeMillis());
+            String sessionKey = getPaymentSessionKey(orderId);
+            redisTemplate.opsForValue().set(sessionKey, frontendData, 5, TimeUnit.MINUTES);
+            
+            // 진행 중 상태 저장
+            String processingKey = getPaymentProcessingKey(orderId);
+            redisTemplate.opsForValue().set(processingKey, "processing", 10, TimeUnit.MINUTES);
+            
+            // 프론트엔드에서 전달받은 실제 결제 데이터 사용
+            Map<String, Object> paymentData = new HashMap<>();
+            if (frontendData != null) {
+                paymentData.put("order_id", frontendData.getOrDefault("order_id", "ORDER_" + System.currentTimeMillis()));
+                paymentData.put("price", frontendData.getOrDefault("price", frontendData.getOrDefault("amount", 0)));
+                paymentData.put("method", frontendData.getOrDefault("method", "card"));
+                paymentData.put("receipt_id", receiptId);
+                paymentData.put("order_name", frontendData.getOrDefault("order_name", "쇼핑몰 상품"));
+                paymentData.put("buyer_name", frontendData.getOrDefault("buyer_name", "고객"));
+                paymentData.put("buyer_email", userEmail);
+                paymentData.put("status", "SUCCESS");
+            } else {
+                // 기본 데이터
+                paymentData.put("order_id", "ORDER_" + System.currentTimeMillis());
+                paymentData.put("price", 50000);
+                paymentData.put("method", "card");
+                paymentData.put("receipt_id", receiptId);
+                paymentData.put("order_name", "쇼핑몰 상품");
+                paymentData.put("buyer_name", "고객");
+                paymentData.put("buyer_email", userEmail);
+                paymentData.put("status", "SUCCESS");
+            }
+            
+            savePaymentInfo(receiptId, userEmail, paymentData);
+            
             Map<String, Object> result = new HashMap<>();
             result.put("status", "success");
-            result.put("message", "이미 처리된 결제입니다.");
+            result.put("message", "결제 검증 완료");
+            result.put("data", paymentData);
+            
+            // 검증 결과 캐시 (1시간)
+            redisTemplate.opsForValue().set(verifyKey, result, 1, TimeUnit.HOURS);
+            
+            // 진행 상태 삭제
+            redisTemplate.delete(processingKey);
+            
+            System.out.println("결제 검증 완료 및 Redis 저장: " + receiptId);
             return result;
+            
+        } finally {
+            // 락 해제
+            redisTemplate.delete(lockKey);
         }
-        
-        // 프론트엔드에서 전달받은 실제 결제 데이터 사용
-        Map<String, Object> paymentData = new HashMap<>();
-        if (frontendData != null) {
-            paymentData.put("order_id", frontendData.getOrDefault("order_id", "ORDER_" + System.currentTimeMillis()));
-            paymentData.put("price", frontendData.getOrDefault("price", frontendData.getOrDefault("amount", 0)));
-            paymentData.put("method", frontendData.getOrDefault("method", "card"));
-            paymentData.put("receipt_id", receiptId);
-            paymentData.put("order_name", frontendData.getOrDefault("order_name", "쇼핑몰 상품"));
-            paymentData.put("buyer_name", frontendData.getOrDefault("buyer_name", "고객"));
-            paymentData.put("buyer_email", userEmail);
-            paymentData.put("status", "SUCCESS");
-        } else {
-            // 기본 데이터
-            paymentData.put("order_id", "ORDER_" + System.currentTimeMillis());
-            paymentData.put("price", 50000);
-            paymentData.put("method", "card");
-            paymentData.put("receipt_id", receiptId);
-            paymentData.put("order_name", "쇼핑몰 상품");
-            paymentData.put("buyer_name", "고객");
-            paymentData.put("buyer_email", userEmail);
-            paymentData.put("status", "SUCCESS");
-        }
-        
-        savePaymentInfo(receiptId, userEmail, paymentData);
-        
-        Map<String, Object> result = new HashMap<>();
-        result.put("status", "success");
-        result.put("message", "결제 검증 완료");
-        result.put("data", paymentData);
-        
-        return result;
     }
     
     /**
