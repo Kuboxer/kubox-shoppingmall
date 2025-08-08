@@ -30,6 +30,14 @@ public class OrderController {
         }
     }
     
+    /**
+     * CORS Preflight 요청 처리
+     */
+    @RequestMapping(method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        return ResponseEntity.ok().build();
+    }
+    
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<Order>> getOrdersByUser(@PathVariable Long userId) {
         try {

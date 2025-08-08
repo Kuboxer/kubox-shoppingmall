@@ -138,4 +138,12 @@ public class PaymentController {
             return ResponseEntity.internalServerError().body(paymentService.getDefaultResponse());
         }
     }
+    
+    /**
+     * CORS Preflight 요청 처리
+     */
+    @RequestMapping(method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        return ResponseEntity.ok().build();
+    }
 }

@@ -79,4 +79,12 @@ public class CartController {
             return ResponseEntity.badRequest().body(Map.of("message", "서버 오류"));
         }
     }
+    
+    /**
+     * CORS Preflight 요청 처리
+     */
+    @RequestMapping(method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        return ResponseEntity.ok().build();
+    }
 }
