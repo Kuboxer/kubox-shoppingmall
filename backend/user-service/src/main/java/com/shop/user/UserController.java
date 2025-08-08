@@ -97,6 +97,36 @@ public class UserController {
         }
     }
     
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestHeader("Authorization") String authHeader) {
+        System.out.println("로그아웃 요청 받음");
+        
+        try {
+            String token = null;
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                token = authHeader.substring(7);
+            }
+            
+            if (token == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "토큰이 없습니다"));
+            }
+            
+            // JWT에서 이메일 추출
+            String email = jwtUtil.getEmailFromToken(token);
+            if (email != null) {
+                userService.logout(email);
+                System.out.println("로그아웃 성공: " + email);
+                return ResponseEntity.ok(Map.of("message", "로그아웃 성공"));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("message", "유효하지 않은 토큰"));
+            }
+        } catch (Exception e) {
+            System.out.println("로그아웃 서버 오류: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("message", "서버 오류: " + e.getMessage()));
+        }
+    }
+    
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String authHeader) {
         System.out.println("프로필 요청 받음, 헤더: " + authHeader);

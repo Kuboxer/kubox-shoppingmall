@@ -4,10 +4,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.annotation.PostConstruct;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class UserService {
@@ -21,6 +23,9 @@ public class UserService {
     
     @Autowired
     private JwtUtil jwtUtil;
+    
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Value("${jwt.secret}")
     private String jwtSecretKey;
@@ -34,6 +39,9 @@ public class UserService {
         logger.info("## JWT_EXPIRATION 로드됨: {}", jwtExpiration);
     }
 
+    private String getRedisKey(String email) {
+        return "user:token:" + email;
+    }
 
     public String register(String email, String password, String name) {
         try {
@@ -57,7 +65,10 @@ public class UserService {
             // JWT 토큰 생성
             String token = jwtUtil.generateToken(email);
             if (token != null) {
-                System.out.println("토큰 생성 완료");
+                // Redis에 토큰 저장 (24시간)
+                String redisKey = getRedisKey(email);
+                redisTemplate.opsForValue().set(redisKey, token, jwtExpiration, TimeUnit.MILLISECONDS);
+                System.out.println("토큰 생성 및 Redis 저장 완료: " + redisKey);
                 return token;
             } else {
                 System.out.println("토큰 생성 실패");
@@ -81,9 +92,16 @@ public class UserService {
                 
                 if (passwordEncoder.matches(password, user.getPassword())) {
                     System.out.println("비밀번호 일치");
+                    
+                    // 기존 토큰 삭제
+                    String redisKey = getRedisKey(email);
+                    redisTemplate.delete(redisKey);
+                    
+                    // 새 토큰 생성 및 저장
                     String token = jwtUtil.generateToken(email);
                     if (token != null) {
-                        System.out.println("로그인 토큰 생성 완료");
+                        redisTemplate.opsForValue().set(redisKey, token, jwtExpiration, TimeUnit.MILLISECONDS);
+                        System.out.println("로그인 토큰 생성 및 Redis 저장 완료: " + redisKey);
                         return token;
                     } else {
                         System.out.println("로그인 토큰 생성 실패");
@@ -99,6 +117,27 @@ public class UserService {
             System.out.println("로그인 오류: " + e.getMessage());
             e.printStackTrace();
             return null;
+        }
+    }
+    
+    public boolean validateToken(String email, String token) {
+        try {
+            String redisKey = getRedisKey(email);
+            String storedToken = (String) redisTemplate.opsForValue().get(redisKey);
+            return token != null && token.equals(storedToken);
+        } catch (Exception e) {
+            System.out.println("토큰 검증 오류: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    public void logout(String email) {
+        try {
+            String redisKey = getRedisKey(email);
+            redisTemplate.delete(redisKey);
+            System.out.println("로그아웃 - Redis 토큰 삭제: " + redisKey);
+        } catch (Exception e) {
+            System.out.println("로그아웃 오류: " + e.getMessage());
         }
     }
     
