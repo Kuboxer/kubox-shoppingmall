@@ -33,6 +33,7 @@ jobs:
         npm run build
       env:
         CI: false
+        REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
         REACT_APP_USER_API_URL: ${{ secrets.REACT_APP_USER_API_URL }}
         REACT_APP_PRODUCT_API_URL: ${{ secrets.REACT_APP_PRODUCT_API_URL }}
         REACT_APP_ORDER_API_URL: ${{ secrets.REACT_APP_ORDER_API_URL }}

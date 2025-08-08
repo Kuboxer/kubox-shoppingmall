@@ -281,7 +281,7 @@ export default function BootpayPayment({ cartItems = [], totalAmount = 50000, us
 
               console.log('🔍 결제 검증 요청:', verifyPayload);
 
-              const verifyResponse = await fetch('http://localhost:8083/api/payment/verify', {
+              const verifyResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/payment/verify`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
