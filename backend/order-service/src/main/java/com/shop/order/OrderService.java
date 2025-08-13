@@ -1,8 +1,5 @@
 package com.shop.order;
 
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import io.github.resilience4j.retry.annotation.Retry;
-import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -23,7 +20,7 @@ public class OrderService {
             Order order = new Order(userId, "PENDING", totalAmount);
             Order savedOrder = orderRepository.save(order);
             
-            // 결제 서비스 호출 (Circuit Breaker 적용)
+            // 결제 서비스 호출
             String paymentResult = processPayment(savedOrder.getId(), totalAmount);
             
             if ("SUCCESS".equals(paymentResult)) {
@@ -38,9 +35,6 @@ public class OrderService {
         }
     }
     
-    @CircuitBreaker(name = "payment-service", fallbackMethod = "fallbackPayment")
-    @Retry(name = "payment-service")
-    @TimeLimiter(name = "payment-service")
     public String processPayment(Long orderId, int amount) {
         try {
             Map<String, Object> paymentData = new HashMap<>();
@@ -58,13 +52,7 @@ public class OrderService {
             throw new RuntimeException("Payment service unavailable", e);
         }
     }
-    
-    // Circuit Breaker Fallback 메서드
-    public String fallbackPayment(Long orderId, int amount, Exception ex) {
-        System.out.println("결제 서비스 장애 감지! Fallback 실행: " + ex.getMessage());
-        // 나중에 처리하기 위해 큐에 저장하거나 다른 로직 수행
-        return "PENDING";
-    }
+
     
     public List<Order> getOrdersByUserId(Long userId) {
         try {
