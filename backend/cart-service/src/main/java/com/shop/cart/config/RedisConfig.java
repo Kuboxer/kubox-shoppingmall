@@ -3,15 +3,11 @@ package com.shop.cart.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import io.lettuce.core.ClientOptions;
-import io.lettuce.core.SslOptions;
 
 @Configuration
 public class RedisConfig {
@@ -32,25 +28,11 @@ public class RedisConfig {
         redisConfig.setPort(port);
         redisConfig.setPassword(password);
         
-        // SSL 설정
-        SslOptions sslOptions = SslOptions.builder()
-                .jdkSslProvider()
-                .build();
-        
-        ClientOptions clientOptions = ClientOptions.builder()
-                .sslOptions(sslOptions)
-                .build();
-        
-        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-                .useSsl()
-                .clientOptions(clientOptions)
-                .build();
-        
-        return new LettuceConnectionFactory(redisConfig, clientConfig);
+        return new LettuceConnectionFactory(redisConfig);
     }
     
     @Bean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, Object> redisTemplate(LettuceConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
         
