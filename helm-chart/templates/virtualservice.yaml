@@ -1,0 +1,44 @@
+{{- if .Values.istio.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ .Values.istio.virtualService.name }}
+  namespace: {{ .Values.istio.virtualService.namespace }}
+spec:
+  hosts:
+  {{- range .Values.istio.gateway.hosts }}
+  - {{ . | quote }}
+  {{- end }}
+  gateways:
+  - {{ .Values.istio.gateway.name }}
+  http:
+  {{- range .Values.istio.virtualService.routes }}
+  {{- $serviceConfig := index $.Values.services .service }}
+  - match:
+    - uri:
+        prefix: {{ .path | quote }}
+    route:
+    - destination:
+        host: {{ $serviceConfig.serviceName }}.{{ $.Values.global.namespace }}.svc.cluster.local
+        port:
+          number: {{ $serviceConfig.port }}
+    timeout: {{ $.Values.istio.virtualService.timeout }}
+    retries:
+      attempts: {{ $.Values.istio.virtualService.retries.attempts }}
+      perTryTimeout: {{ $.Values.istio.virtualService.retries.perTryTimeout }}
+      retryOn: {{ $.Values.istio.virtualService.retries.retryOn }}
+  {{- end }}
+  
+  # 헬스체크 및 기본 라우팅
+  - match:
+    - uri:
+        prefix: "/actuator/health"
+    - uri:
+        exact: "/"
+    route:
+    - destination:
+        host: {{ .Values.services.userService.serviceName }}.{{ .Values.global.namespace }}.svc.cluster.local
+        port:
+          number: {{ .Values.services.userService.port }}
+    timeout: 10s
+{{- end }}
