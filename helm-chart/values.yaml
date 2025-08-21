@@ -1,6 +1,6 @@
 # 전역 설정
 global:
-  imageRegistry: "862016452072.dkr.ecr.ap-northeast-2.amazonaws.com"  # 서울 리전 ECR
+  imageRegistry: "862016452072.dkr.ecr.us-east-2.amazonaws.com"  # 서울 리전 ECR
   namespace: app-services
   serviceAccount: kubox-secrets-sa
 
