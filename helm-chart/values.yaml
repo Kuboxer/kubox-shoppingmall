@@ -1,6 +1,6 @@
 # 전역 설정
 global:
-  imageRegistry: "862016452072.dkr.ecr.us-east-2.amazonaws.com"  # 서울 리전 ECR
+  imageRegistry: "862016452072.dkr.ecr.ap-northeast-2.amazonaws.com"  # 서울 리전 ECR
   namespace: app-services
   serviceAccount: kubox-secrets-sa
 
@@ -11,7 +11,7 @@ services:
     serviceName: user-svc
     image:
       repository: kubox
-      tag: user-service-v5
+      tag: user-service-v1
     port: 8080
     replicas: 1
     env:
@@ -29,7 +29,7 @@ services:
     serviceName: product-svc
     image:
       repository: kubox
-      tag: product-service-v5
+      tag: product-service-v1
     port: 8081
     replicas: 1
     env:
@@ -46,7 +46,7 @@ services:
     serviceName: cart-svc
     image:
       repository: kubox
-      tag: cart-service-v5
+      tag: cart-service-v1
     port: 8084
     replicas: 1
     env:
@@ -63,7 +63,7 @@ services:
     serviceName: order-svc
     image:
       repository: kubox
-      tag: order-service-v5
+      tag: order-service-v1
     port: 8082
     replicas: 1
     env:
@@ -80,7 +80,7 @@ services:
     serviceName: payment-svc
     image:
       repository: kubox
-      tag: payment-service-v6
+      tag: payment-service-v1
     port: 8083
     replicas: 1
     env:
