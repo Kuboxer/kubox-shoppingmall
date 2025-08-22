@@ -1,0 +1,158 @@
+# 전역 설정
+global:
+  imageRegistry: "862016452072.dkr.ecr.ap-northeast-2.amazonaws.com"  # 서울 리전 ECR
+  namespace: app-services
+  serviceAccount: kubox-secrets-sa
+
+# 서비스별 설정
+services:
+  userService:
+    name: user-service
+    serviceName: user-svc
+    image:
+      repository: kubox
+      tag: user-service-v1
+    port: 8080
+    replicas: 1
+    env:
+      DB_NAME: "user_db"
+    secrets:
+      - kubox-common-secret
+      - kubox-bootpay-secret
+    hpa:
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilization: 50
+      
+  productService:
+    name: product-service
+    serviceName: product-svc
+    image:
+      repository: kubox
+      tag: product-service-v1
+    port: 8081
+    replicas: 1
+    env:
+      DB_NAME: "product_db"
+    secrets:
+      - kubox-common-secret
+    hpa:
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 50
+      
+  cartService:
+    name: cart-service
+    serviceName: cart-svc
+    image:
+      repository: kubox
+      tag: cart-service-v1
+    port: 8084
+    replicas: 1
+    env:
+      DB_NAME: "cart_db"
+    secrets:
+      - kubox-common-secret
+    hpa:
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 50
+      
+  orderService:
+    name: order-service
+    serviceName: order-svc
+    image:
+      repository: kubox
+      tag: order-service-v1
+    port: 8082
+    replicas: 1
+    env:
+      DB_NAME: "order_db"
+    secrets:
+      - kubox-common-secret
+    hpa:
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 50
+      
+  paymentService:
+    name: payment-service
+    serviceName: payment-svc
+    image:
+      repository: kubox
+      tag: payment-service-v1
+    port: 8083
+    replicas: 1
+    env:
+      DB_NAME: "payment_db"
+    secrets:
+      - kubox-common-secret
+      - kubox-bootpay-secret
+    hpa:
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 50
+
+# 리소스 설정
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+# 헬스체크 설정
+healthCheck:
+  path: "/actuator/health"
+  startupProbe:
+    periodSeconds: 10
+    failureThreshold: 30
+    timeoutSeconds: 5
+    initialDelaySeconds: 60
+  livenessProbe:
+    periodSeconds: 15
+    timeoutSeconds: 2
+    failureThreshold: 5
+  readinessProbe:
+    periodSeconds: 15
+    timeoutSeconds: 2
+    failureThreshold: 5
+
+# Secrets Store CSI 설정
+secretsStore:
+  enabled: true
+  secretProviderClass: kubox-secrets
+  mountPath: "/mnt/secrets"
+
+# Istio 설정
+istio:
+  enabled: true
+  gateway:
+    name: kubox-gateway
+    namespace: default
+    hosts:
+      - "*"
+    tls:
+      credentialName: kubox-tls-secret
+  virtualService:
+    name: kubox-virtual-service
+    namespace: default
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: "5xx,reset,connect-failure,refused-stream"
+    routes:
+      - path: "/api/auth"
+        service: userService
+      - path: "/api/users"
+        service: userService
+      - path: "/api/products"
+        service: productService
+      - path: "/api/cart"
+        service: cartService
+      - path: "/api/orders"
+        service: orderService
+      - path: "/api/payment"
+        service: paymentService
