@@ -47,7 +47,7 @@ function Cart({ user }) {
       await axios.delete(`${API_ENDPOINTS.CART}/api/cart/${itemId}`);
       fetchCartItems();
     } catch (error) {
-      alert('삭제에 실패했습니다.');
+      alert('삭제에 실패했습니다!');
     }
   };
 
