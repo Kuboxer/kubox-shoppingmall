@@ -1,7 +1,4 @@
-# 프로젝트 1 클라우드 기반 무중단 확장형 MSA 구축
-
-## 프로젝트 기간
-**2025.07.25~2025.10.02**
+# 클라우드 기반 무중단 확장형 MSA 구축
 
 ## 프로젝트 개요
 쇼핑몰 서비스를 위한 고가용성 마이크로서비스 아키텍처 환경 제공
@@ -10,7 +7,7 @@
 AWS Cloud Platform 및 Multi-Cloud (AWS + GCP)
 
 ## 주요 사용 기술
-**Container**: Docker, Kubernetes (EKS)  
+**Container**: https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white 
 **Service Mesh**: Istio  
 **CI/CD**: GitHub Actions, ArgoCD, Helm  
 **IaC**: Terraform  
