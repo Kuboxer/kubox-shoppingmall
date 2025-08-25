@@ -25,6 +25,7 @@ AWS Cloud Platform 및 Multi-Cloud (AWS + GCP)
 ---
 
 ## AWS Architecture
+<img width="2773" height="1860" alt="최종프로젝트-cloud-diagram drawio" src="https://github.com/user-attachments/assets/1ee7c8be-441b-4b53-8e3f-21719723a658" />
 
 ### [S3 정적 호스팅 + CloudFront CDN]
 콘텐츠 전송 속도 향상
@@ -47,6 +48,7 @@ AWS 관리형 Kubernetes 서비스 → 컨테이너 오케스트레이션 운영
 ---
 
 ## Kubernetes Architecture
+<img width="2371" height="1820" alt="최종프로젝트-EKS-diagram drawio" src="https://github.com/user-attachments/assets/c07f3167-8f31-4049-bb9b-6a5d0e930fd5" />
 
 ### [서비스 분리]
 각 마이크로서비스의 독립적 운영으로 장애 영향 최소화
@@ -75,6 +77,7 @@ AWS Secrets Manager와 자동 동기화로 중앙 집중식 보안 관리
 ---
 
 ## CI/CD Architecture
+![3차프로젝트-cicd아키텍처](https://github.com/user-attachments/assets/671bec3b-95e6-4e77-a8f2-866d4367943b)
 
 ### [GitHub Actions]
 완전 관리형 빌드로 인프라 운영 비용 제거
@@ -91,6 +94,7 @@ Git 저장소 기반 선언적 배포로 배포 일관성 및 추적성 확보
 ---
 
 ## Monitoring Architecture
+<img width="1274" height="891" alt="최종프로젝트-monitoring drawio" src="https://github.com/user-attachments/assets/bdc847f8-b8f4-4348-ae3a-ca7026f33459" />
 
 ### [Prometheus 메트릭 수집]
 노드·앱 메트릭 자동 수집 → 시스템 전반 성능 모니터링
