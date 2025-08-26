@@ -1,10 +1,12 @@
 package com.shop.product;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/products")
@@ -12,6 +14,9 @@ import java.util.Map;
 public class ProductController {
     @Autowired
     private ProductService productService;
+    
+    @Value("${APP_VERSION:unknown}")
+    private String appVersion;
     
     @GetMapping
     public ResponseEntity<List<Product>> getAllProducts() {
@@ -67,5 +72,26 @@ public class ProductController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", "서버 오류"));
         }
+    }
+    
+    /**
+     * 서비스 버전 정보 조회
+     */
+    @GetMapping("/version")
+    public ResponseEntity<Map<String, String>> getVersion() {
+        Map<String, String> version = new HashMap<>();
+        version.put("service", "product-service");
+        version.put("version", appVersion);
+        version.put("description", "상품 관리 서비스 - 카탈로그 및 검색 기능");
+        version.put("lastUpdated", "2025-08-26");
+        return ResponseEntity.ok(version);
+    }
+    
+    /**
+     * CORS Preflight 요청 처리
+     */
+    @RequestMapping(method = RequestMethod.OPTIONS)
+    public ResponseEntity<?> handleOptions() {
+        return ResponseEntity.ok().build();
     }
 }

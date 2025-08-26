@@ -1,6 +1,7 @@
 package com.shop.user;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -15,6 +16,9 @@ public class UserController {
     
     @Autowired
     private JwtUtil jwtUtil;
+    
+    @Value("${APP_VERSION:unknown}")
+    private String appVersion;
     
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
@@ -164,6 +168,19 @@ public class UserController {
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("message", "서버 오류: " + e.getMessage()));
         }
+    }
+    
+    /**
+     * 서비스 버전 정보 조회
+     */
+    @GetMapping("/version")
+    public ResponseEntity<Map<String, String>> getVersion() {
+        Map<String, String> version = new HashMap<>();
+        version.put("service", "user-service");
+        version.put("version", appVersion);
+        version.put("description", "사용자 인증 서비스 - JWT 및 Redis 기반");
+        version.put("lastUpdated", "2025-08-26");
+        return ResponseEntity.ok(version);
     }
     
     /**

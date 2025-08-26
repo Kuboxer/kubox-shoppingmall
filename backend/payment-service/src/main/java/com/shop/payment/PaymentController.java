@@ -3,6 +3,7 @@ package com.shop.payment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,9 @@ public class PaymentController {
     
     @Autowired
     private PaymentRepository paymentRepository;
+    
+    @Value("${APP_VERSION:unknown}")
+    private String appVersion;
     
     /**
      * 결제 검증
@@ -137,6 +141,19 @@ public class PaymentController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(paymentService.getDefaultResponse());
         }
+    }
+    
+    /**
+     * 서비스 버전 정보 조회
+     */
+    @GetMapping("/version")
+    public ResponseEntity<Map<String, String>> getVersion() {
+        Map<String, String> version = new HashMap<>();
+        version.put("service", "payment-service");
+        version.put("version", appVersion);
+        version.put("description", "결제 처리 서비스 - BootPay 연동 및 Redis 캠싱");
+        version.put("lastUpdated", "2025-08-26");
+        return ResponseEntity.ok(version);
     }
     
     /**

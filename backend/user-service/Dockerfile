@@ -1,6 +1,10 @@
 # Spring Boot 서비스용 Dockerfile
 FROM openjdk:17-jdk-slim
 
+# 버전 정보 인자
+ARG VERSION=unknown
+ENV APP_VERSION=$VERSION
+
 # 작업 디렉토리 설정
 WORKDIR /app
 
