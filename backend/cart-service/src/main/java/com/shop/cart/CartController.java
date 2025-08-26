@@ -81,6 +81,20 @@ public class CartController {
     }
     
     /**
+     * 서비스 버전 정보 조회
+     */
+    @GetMapping("/version")
+    public ResponseEntity<Map<String, String>> getVersion() {
+        Map<String, String> version = Map.of(
+            "service", "cart-service",
+            "version", "v2.0.0",
+            "description", "장바구니 서비스 - 새로운 기능 추가",
+            "lastUpdated", "2025-08-26"
+        );
+        return ResponseEntity.ok(version);
+    }
+    
+    /**
      * CORS Preflight 요청 처리
      */
     @RequestMapping(method = RequestMethod.OPTIONS)

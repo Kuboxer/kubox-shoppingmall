@@ -31,6 +31,20 @@ public class OrderController {
     }
     
     /**
+     * 서비스 버전 정보 조회
+     */
+    @GetMapping("/version")
+    public ResponseEntity<Map<String, String>> getVersion() {
+        Map<String, String> version = Map.of(
+            "service", "order-service",
+            "version", "v2.1.0",
+            "description", "주문 서비스 - 상태 관리 기능 개선",
+            "lastUpdated", "2025-08-26"
+        );
+        return ResponseEntity.ok(version);
+    }
+    
+    /**
      * CORS Preflight 요청 처리
      */
     @RequestMapping(method = RequestMethod.OPTIONS)

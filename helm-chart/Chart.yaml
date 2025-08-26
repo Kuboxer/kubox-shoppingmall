@@ -1,6 +1,0 @@
-apiVersion: v2
-name: kubox-shoppingmall
-description: Kubox Shopping Mall Microservices
-type: application
-version: 0.1.0
-appVersion: "1.0.0"

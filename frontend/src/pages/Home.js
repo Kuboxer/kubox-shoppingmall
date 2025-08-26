@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import ServiceVersions from '../components/ServiceVersions';
 
 function Home() {
   return (
@@ -12,6 +13,10 @@ function Home() {
         <Link to="/products" className="btn btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.1rem' }}>
           상품 보러가기
         </Link>
+      </div>
+      
+      <div style={{ marginTop: '4rem' }}>
+        <ServiceVersions />
       </div>
     </div>
   );
