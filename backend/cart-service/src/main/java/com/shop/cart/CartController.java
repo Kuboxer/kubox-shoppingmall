@@ -1,6 +1,7 @@
 package com.shop.cart;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -12,6 +13,9 @@ import java.util.Map;
 public class CartController {
     @Autowired
     private CartService cartService;
+    
+    @Value("${APP_VERSION:unknown}")
+    private String appVersion;
     
     @GetMapping("/{userId}")
     public ResponseEntity<List<CartItem>> getCartItems(@PathVariable Long userId) {
@@ -87,7 +91,7 @@ public class CartController {
     public ResponseEntity<Map<String, String>> getVersion() {
         Map<String, String> version = Map.of(
             "service", "cart-service",
-            "version", "v2.0.0",
+            "version", appVersion,
             "description", "장바구니 서비스 - 새로운 기능 추가",
             "lastUpdated", "2025-08-26"
         );

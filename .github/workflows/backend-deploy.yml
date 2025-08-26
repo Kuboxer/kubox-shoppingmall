@@ -121,10 +121,10 @@ jobs:
             
             echo "🏗️  Building $SERVICE as $VERSION_TAG"
             
-            # 도커 빌드
+            # 도커 빌드 (VERSION 인자 전달)
             cd backend/$SERVICE
             
-            if docker build -t "$TEMP_TAG" .; then
+            if docker build --build-arg VERSION="$VERSION_TAG" -t "$TEMP_TAG" .; then
               echo "✅ Build successful"
               
               # 버전 태그 적용 및 푸시

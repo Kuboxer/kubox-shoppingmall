@@ -1,6 +1,7 @@
 package com.shop.order;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -12,6 +13,9 @@ import java.util.Map;
 public class OrderController {
     @Autowired
     private OrderService orderService;
+    
+    @Value("${APP_VERSION:unknown}")
+    private String appVersion;
     
     @PostMapping
     public ResponseEntity<?> createOrder(@RequestBody Map<String, Object> request) {
@@ -37,7 +41,7 @@ public class OrderController {
     public ResponseEntity<Map<String, String>> getVersion() {
         Map<String, String> version = Map.of(
             "service", "order-service",
-            "version", "v2.1.0",
+            "version", appVersion,
             "description", "주문 서비스 - 상태 관리 기능 개선",
             "lastUpdated", "2025-08-26"
         );
