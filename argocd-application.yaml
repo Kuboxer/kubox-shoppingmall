@@ -14,7 +14,7 @@ spec:
         - values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: kubox-shoppingmall
+    namespace: app-services
   syncPolicy:
     automated:
       prune: true

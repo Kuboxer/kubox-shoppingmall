@@ -7,8 +7,8 @@ global:
 # 서비스별 설정
 services:
   userService:
-    name: user-service
-    serviceName: user-service
+    name: user-svc
+    serviceName: user-svc
     image:
       repository: kubox
       tag: user-service-v1
@@ -25,8 +25,8 @@ services:
       targetCPUUtilization: 50
       
   productService:
-    name: product-service
-    serviceName: product-service
+    name: product-svc
+    serviceName: product-svc
     image:
       repository: kubox
       tag: product-service-v1
@@ -42,8 +42,8 @@ services:
       targetCPUUtilization: 50
       
   cartService:
-    name: cart-service
-    serviceName: cart-service
+    name: cart-svc
+    serviceName: cart-svc
     image:
       repository: kubox
       tag: cart-service-v1
@@ -59,8 +59,8 @@ services:
       targetCPUUtilization: 50
       
   orderService:
-    name: order-service
-    serviceName: order-service
+    name: order-svc
+    serviceName: order-svc
     image:
       repository: kubox
       tag: order-service-v1
@@ -76,8 +76,8 @@ services:
       targetCPUUtilization: 50
       
   paymentService:
-    name: payment-service
-    serviceName: payment-service
+    name: payment-svc
+    serviceName: payment-svc
     image:
       repository: kubox
       tag: payment-service-v1
