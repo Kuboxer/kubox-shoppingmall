@@ -153,13 +153,72 @@ jobs:
             cd ../..
             echo "---"
           done
+
+          # 빌드 결과를 환경변수로 저장
+          echo "built_services=$BUILT_SERVICES" >> $GITHUB_ENV
+          
+      - name: Update Helm Chart
+        if: env.built_services != ''
+        run: |
+          echo "🔄 Updating Helm Chart with new image tags..."
+          
+          # Helm Chart 저장소 클론
+          git clone https://github.com/Kuboxer/kubox-helm-chart.git helm-repo
+          cd helm-repo
+          
+          # Git 설정
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 빌드된 각 서비스의 태그 업데이트
+          for SERVICE_TAG in ${{ env.built_services }}; do
+            SERVICE=$(echo $SERVICE_TAG | cut -d':' -f1)
+            TAG=$(echo $SERVICE_TAG | cut -d':' -f2)
+            
+            echo "📝 Updating $SERVICE to $TAG"
+            
+            # values.yaml에서 해당 서비스의 태그 업데이트
+            case $SERVICE in
+              "user-service")
+                sed -i "s/tag: user-service-v.*/tag: $TAG/" values.yaml
+                ;;
+              "product-service")
+                sed -i "s/tag: product-service-v.*/tag: $TAG/" values.yaml
+                ;;
+              "cart-service")
+                sed -i "s/tag: cart-service-v.*/tag: $TAG/" values.yaml
+                ;;
+              "order-service")
+                sed -i "s/tag: order-service-v.*/tag: $TAG/" values.yaml
+                ;;
+              "payment-service")
+                sed -i "s/tag: payment-service-v.*/tag: $TAG/" values.yaml
+                ;;
+            esac
+          done
+          
+          # 변경사항 확인
+          echo "📋 Changes made:"
+          git diff
+          
+          # 변경사항이 있으면 커밋 & 푸시
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Update image tags: ${{ env.built_services }}"
+            git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main
+            echo "✅ Helm chart updated successfully"
+          else
+            echo "ℹ️  No changes to commit"
+          fi
           
       - name: Summary
         run: |
           echo ""
           echo "🎉 Deployment Summary:"
           echo "✅ Built services: ${{ env.build_services }}"
+          echo "📦 Updated images: ${{ env.built_services }}"
           echo "📋 Build logic:"
           echo "   - No images in ECR: Build ALL services as v1"
           echo "   - Images exist: Build only CHANGED services"
           echo "   - Latest tag always points to newest version"
+          echo "   - Helm chart automatically updated"
