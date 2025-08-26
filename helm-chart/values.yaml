@@ -8,7 +8,7 @@ global:
 services:
   userService:
     name: user-service
-    serviceName: user-svc
+    serviceName: user-service
     image:
       repository: kubox
       tag: user-service-v1
@@ -26,7 +26,7 @@ services:
       
   productService:
     name: product-service
-    serviceName: product-svc
+    serviceName: product-service
     image:
       repository: kubox
       tag: product-service-v1
@@ -43,7 +43,7 @@ services:
       
   cartService:
     name: cart-service
-    serviceName: cart-svc
+    serviceName: cart-service
     image:
       repository: kubox
       tag: cart-service-v1
@@ -60,7 +60,7 @@ services:
       
   orderService:
     name: order-service
-    serviceName: order-svc
+    serviceName: order-service
     image:
       repository: kubox
       tag: order-service-v1
@@ -77,7 +77,7 @@ services:
       
   paymentService:
     name: payment-service
-    serviceName: payment-svc
+    serviceName: payment-service
     image:
       repository: kubox
       tag: payment-service-v1
