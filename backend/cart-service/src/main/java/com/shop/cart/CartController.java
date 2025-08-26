@@ -81,7 +81,7 @@ public class CartController {
     }
     
     /**
-     * 서비스 버전 정보 조회
+     * 서비스 버전 정보 조회s
      */
     @GetMapping("/version")
     public ResponseEntity<Map<String, String>> getVersion() {
