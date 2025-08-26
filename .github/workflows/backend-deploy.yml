@@ -82,6 +82,9 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           BUILD_NUMBER="${{ github.run_number }}"
           
+          # 빌드된 서비스와 버전을 저장할 배열
+          BUILT_SERVICES=""
+          
           for SERVICE in ${{ env.build_services }}; do
             echo "=== Processing $SERVICE ==="
             
@@ -133,6 +136,9 @@ jobs:
                 docker tag "$TEMP_TAG" "$LATEST_URI"
                 docker push "$LATEST_URI"
                 echo "✅ Updated $LATEST_TAG tag"
+                
+                # 빌드 성공한 서비스 기록
+                BUILT_SERVICES="$BUILT_SERVICES $SERVICE:$VERSION_TAG"
                 
                 # 결과 확인
                 echo "🎯 $SERVICE is now available as:"
