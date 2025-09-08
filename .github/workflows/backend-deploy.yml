@@ -59,6 +59,19 @@ jobs:
             fi
           done
 
+      - name: Build services for SonarQube
+        run: |
+          echo "🔨 Building services for SonarQube analysis..."
+          for service in backend/*/; do
+            if [ -f "$service/build.gradle" ]; then
+              service_name=$(basename "$service")
+              echo "📦 Building $service_name for analysis..."
+              cd "$service"
+              ./gradlew clean compileJava compileTestJava
+              cd ../..
+            fi
+          done
+
       - name: Run SonarQube Scan
         run: |
           # SonarQube Scanner 다운로드 및 실행
@@ -66,12 +79,13 @@ jobs:
           unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
           export PATH=$PATH:$(pwd)/sonar-scanner-4.8.0.2856-linux/bin
           
-          # SonarQube 스캔 실행 (최소 설정)
+          # SonarQube 스캔 실행
           sonar-scanner \
             -Dsonar.projectKey=kubox-shopping-mall \
-            -Dsonar.sources=. \
-            -Dsonar.inclusions="backend/**/*.java" \
-            -Dsonar.exclusions="**/build/**,**/gradle/**,**/gradlew,**/gradlew.bat,**/.gradle/**,**/*.xml,**/*.yml,**/*.yaml" \
+            -Dsonar.sources=backend \
+            -Dsonar.java.binaries=backend/user-service/build/classes/java/main,backend/product-service/build/classes/java/main,backend/cart-service/build/classes/java/main,backend/order-service/build/classes/java/main,backend/payment-service/build/classes/java/main \
+            -Dsonar.java.test.binaries=backend/user-service/build/classes/java/test,backend/product-service/build/classes/java/test,backend/cart-service/build/classes/java/test,backend/order-service/build/classes/java/test,backend/payment-service/build/classes/java/test \
+            -Dsonar.exclusions="**/build/**,**/gradle/**,**/gradlew,**/gradlew.bat,**/.gradle/**" \
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }}
         
