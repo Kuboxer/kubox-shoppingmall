@@ -73,14 +73,7 @@ jobs:
             -Dsonar.inclusions="backend/**/*.java" \
             -Dsonar.exclusions="**/build/**,**/gradle/**,**/gradlew,**/gradlew.bat,**/.gradle/**,**/*.xml,**/*.yml,**/*.yaml" \
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }} || echo "SonarQube scan failed, continuing..."
-
-      - name: SonarQube Quality Gate
-        continue-on-error: true
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
