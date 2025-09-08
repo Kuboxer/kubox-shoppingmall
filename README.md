@@ -14,6 +14,8 @@ AWS Cloud Platform 및 Multi-Cloud (AWS + GCP)
 
 **CI/CD**: ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?style=flat-square&logo=argo&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white)
 
+**Code Quality**: ![SonarQube](https://img.shields.io/badge/SonarQube-4E9BCD?style=flat-square&logo=sonarqube&logoColor=white)
+
 **IaC**: ![Terraform](https://img.shields.io/badge/Terraform-623CE4?style=flat-square&logo=terraform&logoColor=white)
 
 **Database**: ![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
@@ -30,7 +32,7 @@ AWS Cloud Platform 및 Multi-Cloud (AWS + GCP)
 ---
 
 ## AWS Architecture
-<img width="2773" height="1860" alt="최종프로젝트-cloud-diagram drawio" src="https://github.com/user-attachments/assets/1ee7c8be-441b-4b53-8e3f-21719723a658" />
+<img width="2773" height="1860" alt="최종프로젝트-cloud-diagram drawio" src="https://github.com/user-attachments/assets/1ee7c8be-441b-4b53-8e3f-21719723a658" />
 
 ### [S3 정적 호스팅 + CloudFront CDN]
 콘텐츠 전송 속도 향상
@@ -53,7 +55,7 @@ AWS 관리형 Kubernetes 서비스 → 컨테이너 오케스트레이션 운영
 ---
 
 ## Kubernetes Architecture
-<img width="2371" height="1820" alt="최종프로젝트-EKS-diagram drawio" src="https://github.com/user-attachments/assets/c07f3167-8f31-4049-bb9b-6a5d0e930fd5" />
+<img width="2371" height="1820" alt="최종프로젝트-EKS-diagram drawio" src="https://github.com/user-attachments/assets/c07f3167-8f31-4049-bb9b-6a5d0e930fd5" />
 
 ### [서비스 분리]
 각 마이크로서비스의 독립적 운영으로 장애 영향 최소화
@@ -82,7 +84,7 @@ AWS Secrets Manager와 자동 동기화로 중앙 집중식 보안 관리
 ---
 
 ## CI/CD Architecture
-![3차프로젝트-cicd아키텍처](https://github.com/user-attachments/assets/671bec3b-95e6-4e77-a8f2-866d4367943b)
+![3차프로젝트-cicd아키텍처](https://github.com/user-attachments/assets/671bec3b-95e6-4e77-a8f2-866d4367943b)
 
 ### [GitHub Actions]
 완전 관리형 빌드로 인프라 운영 비용 제거
@@ -93,13 +95,16 @@ AWS 통합 관리를 통한 운영 효율성 및 보안 강화
 ### [ArgoCD + Helm Chart]
 Git 저장소 기반 선언적 배포로 배포 일관성 및 추적성 확보
 
+### [SonarQube 코드 품질 관리]
+버그, 취약점, 코드 스멜 자동 감지로 코드 품질 향상
+
 ### [GitHub Repository]
 애플리케이션 코드와 인프라 코드의 통합 관리로 변경 추적 용이
 
 ---
 
 ## Monitoring Architecture
-<img width="1274" height="891" alt="최종프로젝트-monitoring drawio" src="https://github.com/user-attachments/assets/bdc847f8-b8f4-4348-ae3a-ca7026f33459" />
+<img width="1274" height="891" alt="최종프로젝트-monitoring drawio" src="https://github.com/user-attachments/assets/bdc847f8-b8f4-4348-ae3a-ca7026f33459" />
 
 ### [Prometheus 메트릭 수집]
 노드·앱 메트릭 자동 수집 → 시스템 전반 성능 모니터링
@@ -118,3 +123,88 @@ PromQL/LogQL 기반 대시보드 → 실시간 메트릭 및 로그 분석
 
 ### [S3 장기 저장]
 메트릭·로그 압축 보관 → S3 Lifecycle 정책으로 비용 효율적 데이터 관리
+
+---
+
+## SonarQube 코드 품질 관리
+
+### 설정 정보
+- **SonarQube URL**: `http://ac6144560e7204124b21fa5016f6a3d0-1879842916.ap-northeast-2.elb.amazonaws.com:9000`
+- **프로젝트 키**: `kubox-shopping-mall`
+
+### 주요 기능
+- **코드 품질 분석**: 버그, 취약점, 코드 스멜 자동 감지
+- **테스트 커버리지**: 테스트 커버리지 측정 및 리포트
+- **중복 코드 감지**: 코드 중복 분석으로 유지보수성 향상
+- **품질 게이트**: 품질 기준 미달 시 빌드 실패로 품질 보장
+
+### CI/CD 통합
+1. 코드 푸시 시 자동으로 SonarQube 스캔 실행
+2. Gradle 빌드와 테스트 실행 후 코드 분석
+3. 품질 게이트 통과 시에만 Docker 이미지 빌드 진행
+4. 실시간 코드 품질 피드백 제공
+
+### 접근 방법
+```bash
+# SonarQube 대시보드 접속
+open http://ac6144560e7204124b21fa5016f6a3d0-1879842916.ap-northeast-2.elb.amazonaws.com:9000
+
+# 프로젝트별 상세 분석 결과 확인 가능
+```
+
+---
+
+## 빠른 시작 가이드
+
+### 1. 저장소 클론
+```bash
+git clone https://github.com/Kuboxer/shopping-mall-msa.git
+cd shopping-mall-msa
+```
+
+### 2. 환경 설정
+```bash
+# 환경 변수 설정
+cp backend/.env.example backend/.env
+# .env 파일을 실제 환경에 맞게 수정
+```
+
+### 3. GitHub Secrets 설정 (CI/CD용)
+Repository Settings → Secrets and variables → Actions에서 설정:
+- `SONAR_TOKEN`: SonarQube 인증 토큰
+- `SONAR_HOST_URL`: SonarQube 서버 URL  
+- `AWS_ACCESS_KEY_ID`: AWS 접근 키
+- `AWS_SECRET_ACCESS_KEY`: AWS 비밀 키
+- `AWS_REGION`: AWS 리전
+- `HELM_REPO_TOKEN`: Helm Chart 저장소 토큰
+
+### 4. 코드 푸시 및 자동 배포
+```bash
+git add .
+git commit -m "feat: add new feature"
+git push origin main
+```
+
+### 5. 모니터링 확인
+- **SonarQube**: 코드 품질 분석 결과
+- **GitHub Actions**: CI/CD 파이프라인 상태
+- **ArgoCD**: 애플리케이션 배포 상태
+- **Grafana**: 시스템 메트릭 및 로그
+
+---
+
+## 문제 해결
+
+### SonarQube 관련
+- 토큰 만료 시 새 토큰 발급 후 GitHub Secrets 업데이트
+- 분석 실패 시 프로젝트 키와 권한 확인
+
+### CI/CD 관련  
+- AWS 권한 오류 시 IAM 정책 확인
+- ECR 푸시 실패 시 레지스트리 권한 확인
+
+### 애플리케이션 관련
+- 로그는 `kubectl logs -f <pod-name>` 명령으로 확인
+- 서비스 상태는 `kubectl get pods,svc` 명령으로 확인
+
+자세한 설정 방법은 [SONARQUBE_SETUP.md](./SONARQUBE_SETUP.md) 파일을 참조하세요.

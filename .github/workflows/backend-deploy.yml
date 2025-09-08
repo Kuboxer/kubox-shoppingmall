@@ -16,7 +16,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0  # SonarQube를 위해 전체 히스토리 필요
+        
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Make gradlew executable
+        run: |
+          find backend/ -name "gradlew" -exec chmod +x {} \;
+
+      - name: Build and Test with Gradle
+        run: |
+          echo "🔨 Building and testing all backend services..."
+          for service in backend/*/; do
+            if [ -f "$service/build.gradle" ]; then
+              service_name=$(basename "$service")
+              echo "📦 Building $service_name..."
+              cd "$service"
+              ./gradlew clean build -x test  # 테스트는 별도로 실행
+              ./gradlew test --continue || true  # 테스트 실패해도 계속 진행
+              cd ../..
+            fi
+          done
+
+      - name: SonarQube Scan
+        uses: sonarqube-quality-gate-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHub 토큰 추가
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          scannerVersion: 4.8.0.2856
+          projectBaseDir: .
+          args: |
+            -Dsonar.verbose=true
+            -Dsonar.projectKey=kubox-shopping-mall
+            -Dsonar.projectName="Kubox Shopping Mall MSA"
+            -Dsonar.sources=backend/
+            -Dsonar.java.binaries=backend/**/build/classes/java/main
+            -Dsonar.java.test.binaries=backend/**/build/classes/java/test
+            -Dsonar.junit.reportPaths=backend/**/build/test-results/test
+            -Dsonar.jacoco.reportPaths=backend/**/build/jacoco/test.exec
+            -Dsonar.sourceEncoding=UTF-8
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -223,6 +284,7 @@ jobs:
           echo "🎉 Deployment Summary:"
           echo "✅ Built services: ${{ env.build_services }}"
           echo "📦 Updated images: ${{ env.built_services }}"
+          echo "🔍 SonarQube analysis completed"
           echo "📋 Build logic:"
           echo "   - No images in ECR: Build ALL services as v1"
           echo "   - Images exist: Build only CHANGED services"

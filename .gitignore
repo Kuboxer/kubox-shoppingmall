@@ -40,3 +40,8 @@ npm-debug.log*
 gradle-app.setting
 !gradle-wrapper.jar
 aws/
+
+# SonarQube
+.sonar/
+.scannerwork/
+sonar-project.properties.bak
