@@ -60,24 +60,13 @@ jobs:
           done
 
       - name: SonarQube Scan
-        uses: sonarqube-quality-gate-action@master
+        uses: sonarsource/sonarqube-quality-gate-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHub 토큰 추가
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           scannerVersion: 4.8.0.2856
-          projectBaseDir: .
-          args: |
-            -Dsonar.verbose=true
-            -Dsonar.projectKey=kubox-shopping-mall
-            -Dsonar.projectName="Kubox Shopping Mall MSA"
-            -Dsonar.sources=backend/
-            -Dsonar.java.binaries=backend/**/build/classes/java/main
-            -Dsonar.java.test.binaries=backend/**/build/classes/java/test
-            -Dsonar.junit.reportPaths=backend/**/build/test-results/test
-            -Dsonar.jacoco.reportPaths=backend/**/build/jacoco/test.exec
-            -Dsonar.sourceEncoding=UTF-8
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
