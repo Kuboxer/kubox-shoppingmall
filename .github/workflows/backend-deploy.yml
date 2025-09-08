@@ -66,8 +66,8 @@ jobs:
           unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
           export PATH=$PATH:$(pwd)/sonar-scanner-4.8.0.2856-linux/bin
           
-          # SonarQube 스캔 실행
-          sonar-scanner \
+          # SonarQube 스캔 실행 (디버그 모드)
+          sonar-scanner -X \
             -Dsonar.projectKey=kubox-shopping-mall \
             -Dsonar.sources=backend/ \
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
