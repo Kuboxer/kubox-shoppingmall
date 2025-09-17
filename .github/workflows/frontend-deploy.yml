@@ -47,10 +47,11 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
     
-    - name: Deploy to S3
+    - name: Deploy to S3 (Safe Mode)
       run: |
         cd frontend
-        aws s3 sync build/ s3://${{ secrets.S3_BUCKET_NAME }} --delete
+        # React 빌드 파일만 업로드, images 폴더는 제외하고 삭제
+        aws s3 sync build/ s3://${{ secrets.S3_BUCKET_NAME }} --delete --exclude="images/*"
     
     - name: Invalidate CloudFront (optional)
       run: |
