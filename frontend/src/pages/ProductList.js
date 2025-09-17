@@ -5,8 +5,8 @@ import API_ENDPOINTS from '../config/api';
 function ProductList() {
   const [products, setProducts] = useState([]);
 
-  // S3 이미지 URL 베이스 경로
-  const S3_IMAGE_BASE_URL = 'https://s3.ap-northeast-2.amazonaws.com/www.kubox.shop/images/';
+  // CloudFront URL (이미지에서 확인된 실제 URL)
+  const S3_IMAGE_BASE_URL = 'https://d36vqg3xcdb804.cloudfront.net/images/';
 
   useEffect(() => {
     fetchProducts();
