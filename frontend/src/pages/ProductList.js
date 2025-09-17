@@ -5,8 +5,8 @@ import API_ENDPOINTS from '../config/api';
 function ProductList() {
   const [products, setProducts] = useState([]);
 
-  // 임시로 placeholder 이미지 사용 (URL 문제 해결을 위해)
-  const S3_IMAGE_BASE_URL = 'https://via.placeholder.com/500x400/f0f0f0/999999?text=';
+  // S3에 수동으로 업로드한 이미지 경로
+  const S3_IMAGES_BASE_URL = 'https://s3.ap-northeast-2.amazonaws.com/www.kubox.shop/images/';
 
   useEffect(() => {
     fetchProducts();
@@ -42,31 +42,42 @@ function ProductList() {
     }
   };
 
-  // 상품명에 따른 이미지 파일명 매핑
+  // 상품명에 따른 이미지 파일명 매핑 (S3에 업로드된 실제 파일명)
   const getImageFileName = (productName) => {
-    const imageMap = {
-      '기본 원목 티셔츠': '기본원목티셔츠.png',
-      '면 양말 3켤레': '면양말3켤레.png',
-      '무지 맨투맨': '무지맨투맨.png',
-      '조거팬츠': '조거팬츠.png',
-      '데님 청바지': '데님청바지.png',
-      '울팬': '울팬.png',
-      '스니커즈': '스니커즈.png',
-      '슬리퍼': '슬리퍼.png',
-      '아이패드 케이스': '아이패드케이스.png',
-      '향목침대': '향목침대.png',
-      '조각상': '조각상.png',
-      '트랙터': '트랙터.png',
-      '트롤리즈': '트롤리즈.png',
-      '후드티': '후드티.png'
+    const fileNameMap = {
+      '기본 흰색 티셔츠': '1.png',
+      '면 양말 3켤레': '2.png',
+      '무지 맨투맨': '3.png',
+      '조거팬츠': '7.png',
+      '데님 청바지': '4.png',
+      '레깅스': '12.png',
+      '스니커즈': '5.png',
+      '슬리퍼': '10.png',
+      '아이패드 케이스': '13.png',
+      '크로스백': '9.png',
+      '볼캡': '6.png',
+      '트렌치코트': '15.png',
+      '니트스웨터': '14.png'
+      '후드티': '8.png',
+      '반팔 셔츠':'11.png'
     };
     
-    return imageMap[productName] || 'default.png';
+    return fileNameMap[productName] || '1.png';
   };
 
-  // 이미지 로드 에러 처리
+  // S3 이미지 URL 생성
+  const getProductImageUrl = (productName) => {
+    const fileName = getImageFileName(productName);
+    return `${S3_IMAGES_BASE_URL}${fileName}`;
+  };
+
+  // 이미지 로드 에러 처리 - 인라인 SVG 사용
   const handleImageError = (e) => {
-    e.target.src = 'https://via.placeholder.com/500x400/f0f0f0/999999?text=이미지+없음';
+    console.warn(`Failed to load image for: ${e.target.alt}`);
+    console.warn(`Attempted URL: ${e.target.src}`);
+    
+    // Base64 인코딩된 SVG placeholder 사용 (외부 의존성 없음)
+    e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0i+8J2fOvvJ608L3RleHQ+PC9zdmc+';
   };
 
   return (
@@ -80,7 +91,7 @@ function ProductList() {
             <div key={product.id} className="product-card">
               <div className="product-image">
                 <img 
-                  src={`${S3_IMAGE_BASE_URL}${encodeURIComponent(product.name)}`}
+                  src={getProductImageUrl(product.name)}
                   alt={product.name}
                   style={{
                     width: '100%',
