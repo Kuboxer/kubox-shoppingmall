@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import ServiceVersions from '../components/ServiceVersions';
+import S3URLTest from '../components/S3URLTest';
 
 function Home() {
   return (
@@ -16,6 +17,10 @@ function Home() {
       </div>
       
       <div style={{ marginTop: '4rem' }}>
+        <S3URLTest />
+      </div>
+      
+      <div style={{ marginTop: '2rem' }}>
         <ServiceVersions />
       </div>
     </div>

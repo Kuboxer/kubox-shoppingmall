@@ -5,8 +5,8 @@ import API_ENDPOINTS from '../config/api';
 function ProductList() {
   const [products, setProducts] = useState([]);
 
-  // CloudFront URL (이미지에서 확인된 실제 URL)
-  const S3_IMAGE_BASE_URL = 'https://d36vqg3xcdb804.cloudfront.net/images/';
+  // 임시로 placeholder 이미지 사용 (URL 문제 해결을 위해)
+  const S3_IMAGE_BASE_URL = 'https://via.placeholder.com/500x400/f0f0f0/999999?text=';
 
   useEffect(() => {
     fetchProducts();
@@ -80,7 +80,7 @@ function ProductList() {
             <div key={product.id} className="product-card">
               <div className="product-image">
                 <img 
-                  src={`${S3_IMAGE_BASE_URL}${getImageFileName(product.name)}`}
+                  src={`${S3_IMAGE_BASE_URL}${encodeURIComponent(product.name)}`}
                   alt={product.name}
                   style={{
                     width: '100%',
