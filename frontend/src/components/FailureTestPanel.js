@@ -54,7 +54,7 @@ const FailureTestPanel = () => {
     }
   };
 
-  // 정상 결제 테스트
+  // 정상 결제 테스트 (Payment Service 직접 호출)
   const testNormalPayment = async () => {
     setLoading(true);
     const paymentData = {
@@ -77,7 +77,7 @@ const FailureTestPanel = () => {
       });
       
       const data = await response.json();
-      setTestResult(`✅ 정상 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`);
+      setTestResult(`✅ 정상 결제 테스트 결과 (Payment Service 직접):\n${JSON.stringify(data, null, 2)}`);
     } catch (error) {
       setTestResult(`❌ 정상 결제 테스트 오류: ${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/verify`);
     } finally {
@@ -85,7 +85,7 @@ const FailureTestPanel = () => {
     }
   };
 
-  // 장애 결제 테스트
+  // 장애 결제 테스트 (Payment Service 직접 호출)
   const testFailurePayment = async () => {
     setLoading(true);
     const paymentData = {
@@ -113,9 +113,45 @@ const FailureTestPanel = () => {
       }
       
       const data = await response.json();
-      setTestResult(`💥 장애 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`);
+      setTestResult(`💥 장애 결제 테스트 결과 (Payment Service 직접):\n${JSON.stringify(data, null, 2)}`);
     } catch (error) {
       setTestResult(`💥 장애 결제 테스트 (예상된 오류):\n${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/verify`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🛒 Cart Service를 통한 결제 테스트 (Circuit Breaker 적용)
+  const testCartPayment = async (isFailure = false) => {
+    setLoading(true);
+    const userId = 1;
+    const paymentData = {
+      receipt_id: `RECEIPT_CART_${isFailure ? 'FAILURE' : 'NORMAL'}_${Date.now()}`,
+      buyer_name: isFailure ? "FAILURE_USER" : "정상고객",
+      method: "card"
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/cart/${userId}/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Email': 'demo@kubox.shop'
+        },
+        body: JSON.stringify(paymentData)
+      });
+      
+      const data = await response.json();
+      
+      if (response.status === 503) {
+        setTestResult(`🛡️ Cart Service Circuit Breaker 동작!\n응답 코드: ${response.status}\n${JSON.stringify(data, null, 2)}\n\n✅ Payment Service 장애 시 Cart Service가 사용자를 보호했습니다!`);
+      } else if (response.ok) {
+        setTestResult(`🛒 Cart Service 결제 테스트 성공:\n${JSON.stringify(data, null, 2)}`);
+      } else {
+        setTestResult(`🛒 Cart Service 결제 테스트 결과:\n응답 코드: ${response.status}\n${JSON.stringify(data, null, 2)}`);
+      }
+    } catch (error) {
+      setTestResult(`❌ Cart Service 결제 테스트 오류: ${error.message}\n\nAPI URL: ${API_BASE_URL}/api/cart/${userId}/payment`);
     } finally {
       setLoading(false);
     }
@@ -157,44 +193,7 @@ const FailureTestPanel = () => {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    setTestResult(`🔄 연속 장애 테스트 완료:\n${results.join('\n')}\n\n🎯 Istio Circuit Breaker가 동작했을 것입니다!\n\nAPI URL: ${API_BASE_URL}/api/payment/verify\n\n📋 다음 단계: ArgoCD에서 이전 버전으로 롤백하여 Blue-Green 배포 효과 확인`);
-    setLoading(false);
-  };
-
-  // Order Service를 통한 장애 테스트
-  const testOrderFailure = async () => {
-    setLoading(true);
-    setTestResult('🛒 Order Service를 통한 장애 테스트 시작...\n');
-    
-    const results = [];
-    
-    for (let i = 1; i <= 3; i++) {
-      const orderData = {
-        userId: 1,
-        totalAmount: 50000,
-        test_failure: true // ← Order Service에서 장애 모드 감지
-      };
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/orders/create`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Email': 'demo@kubox.shop'
-          },
-          body: JSON.stringify(orderData)
-        });
-        
-        const data = await response.json();
-        results.push(`주문 시도 ${i}: ${response.status} - ${data.message || 'Unknown'}`);
-      } catch (error) {
-        results.push(`주문 시도 ${i}: 에러 - ${error.message}`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    setTestResult(`🛒 Order Service 장애 테스트 완료:\n${results.join('\n')}\n\nAPI URL: ${API_BASE_URL}/api/orders/create\n\n🔄 Order → Payment 서비스 호출 시 Circuit Breaker 동작 확인!`);
+    setTestResult(`🔄 연속 장애 테스트 완료:\n${results.join('\n')}\n\n🎯 Istio Circuit Breaker가 동작했을 것입니다!\n\nAPI URL: ${API_BASE_URL}/api/payment/verify\n\n📋 다음 단계: Cart Service를 통한 결제 테스트로 Circuit Breaker 보호 효과 확인`);
     setLoading(false);
   };
 
@@ -215,7 +214,7 @@ const FailureTestPanel = () => {
       <div className="panel-header">
         <h2>🎭 Payment Service 장애 시뮬레이션 v1.1.0</h2>
         <div className="version-badge">
-          Blue-Green 배포 테스트 버전
+          Blue-Green 배포 + Circuit Breaker 테스트
         </div>
         <div className="status-indicator" style={{ color: getStatusColor() }}>
           {getStatusText()}
@@ -265,15 +264,14 @@ const FailureTestPanel = () => {
 
       {/* 시연용 테스트 */}
       <div className="test-section">
-        <h3>🎬 Blue-Green 배포 시연</h3>
+        <h3>🎬 Circuit Breaker 시연</h3>
         <div className="scenario-steps">
-          <h4>📋 시연 시나리오:</h4>
+          <h4>📋 새로운 아키텍처:</h4>
           <ol>
-            <li><strong>정상 테스트:</strong> v1.1.0에서 정상 결제 확인</li>
-            <li><strong>장애 발생:</strong> 장애 스위치로 의도적 장애 발생</li>
-            <li><strong>Circuit Breaker:</strong> Istio Outlier Detection 동작 확인</li>
-            <li><strong>ArgoCD 롤백:</strong> v1.0.0으로 즉시 롤백</li>
-            <li><strong>즉시 복구:</strong> 이 패널이 사라지고 정상 서비스 복구</li>
+            <li><strong>기존 문제:</strong> Frontend → Payment Service (직접 호출, 보호 없음)</li>
+            <li><strong>해결책:</strong> Frontend → Cart Service → Payment Service (Circuit Breaker 적용)</li>
+            <li><strong>장애 격리:</strong> Payment Service 장애 시 Cart Service가 사용자 보호</li>
+            <li><strong>Blue-Green 배포:</strong> ArgoCD 롤백으로 즉시 복구</li>
           </ol>
         </div>
         
@@ -283,14 +281,14 @@ const FailureTestPanel = () => {
             onClick={testNormalPayment}
             disabled={loading}
           >
-            ✅ 정상 결제 테스트
+            ✅ 정상 결제 테스트 (직접)
           </button>
           <button 
             className="btn btn-danger" 
             onClick={testFailurePayment}
             disabled={loading}
           >
-            💥 장애 결제 테스트
+            💥 장애 결제 테스트 (직접)
           </button>
           <button 
             className="btn btn-primary" 
@@ -301,10 +299,17 @@ const FailureTestPanel = () => {
           </button>
           <button 
             className="btn btn-secondary" 
-            onClick={testOrderFailure}
+            onClick={() => testCartPayment(false)}
             disabled={loading}
           >
-            🛒 Order Service 장애 테스트
+            🛒 Cart Service 정상 결제
+          </button>
+          <button 
+            className="btn btn-warning" 
+            onClick={() => testCartPayment(true)}
+            disabled={loading}
+          >
+            🛡️ Cart Service 장애 결제 (보호됨)
           </button>
         </div>
       </div>
@@ -323,39 +328,39 @@ const FailureTestPanel = () => {
         </div>
       )}
 
-      {/* Blue-Green 배포 가이드 */}
+      {/* Circuit Breaker 설명 */}
       <div className="guide-section">
-        <h3>🚀 Blue-Green 배포 효과 확인 방법</h3>
+        <h3>🛡️ Circuit Breaker 동작 원리</h3>
         <div className="deployment-info">
           <div className="version-comparison">
             <div className="version-card current">
-              <h4>📦 현재 버전 (v1.1.0)</h4>
+              <h4>🚫 직접 호출 (보호 없음)</h4>
               <ul>
-                <li>✅ 기본 결제 기능</li>
-                <li>🎭 장애 시뮬레이션 기능</li>
-                <li>🔥 이 관리 패널</li>
-                <li>💥 FAILURE 키워드 감지</li>
+                <li>Frontend → Payment Service</li>
+                <li>❌ 장애 시 사용자에게 직접 노출</li>
+                <li>❌ 500 에러 그대로 표시</li>
+                <li>❌ 시스템 부하 가중</li>
               </ul>
             </div>
             <div className="version-card rollback">
-              <h4>📦 롤백 후 (v1.0.0)</h4>
+              <h4>🛡️ Circuit Breaker (보호됨)</h4>
               <ul>
-                <li>✅ 기본 결제 기능</li>
-                <li>❌ 장애 시뮬레이션 제거</li>
-                <li>❌ 이 패널 사라짐</li>
-                <li>✅ 모든 요청 정상 처리</li>
+                <li>Frontend → Cart Service → Payment Service</li>
+                <li>✅ 장애 감지 시 즉시 차단</li>
+                <li>✅ 503 응답으로 친화적 메시지</li>
+                <li>✅ 시스템 보호 및 빠른 복구</li>
               </ul>
             </div>
           </div>
         </div>
         
         <div className="next-steps">
-          <h4>🎯 다음 단계:</h4>
+          <h4>🎯 시연 순서:</h4>
           <ol>
-            <li>위 버튼들로 장애 발생 확인</li>
-            <li>ArgoCD UI에서 payment-service를 v1.0.0으로 롤백</li>
-            <li>이 페이지 새로고침 → <strong>이 패널이 완전히 사라짐!</strong></li>
-            <li>모든 결제 요청이 정상 처리됨을 확인</li>
+            <li><strong>장애 모드 ON</strong> → Payment Service 장애 상태 만들기</li>
+            <li><strong>직접 호출 테스트</strong> → 500 에러 확인 (보호 없음)</li>
+            <li><strong>Cart Service 테스트</strong> → 503 응답으로 보호됨 확인</li>
+            <li><strong>ArgoCD 롤백</strong> → 이 패널 사라지고 즉시 복구</li>
           </ol>
         </div>
       </div>

@@ -85,15 +85,61 @@ public class CartController {
     }
     
     /**
-     * 서비스 버전 정보 조회s
+     * 🛒 장바구니 결제 요청 (Circuit Breaker 적용)
+     */
+    @PostMapping("/{userId}/payment")
+    public ResponseEntity<Map<String, Object>> processPayment(
+            @PathVariable Long userId,
+            @RequestHeader(value = "User-Email") String userEmail,
+            @RequestBody Map<String, Object> paymentData) {
+        
+        try {
+            Map<String, Object> result = cartService.processCartPayment(userId, userEmail, paymentData);
+            
+            if ("success".equals(result.get("status"))) {
+                return ResponseEntity.ok(result);
+            } else {
+                // Circuit Breaker가 열린 경우 503 응답
+                if ("circuit_breaker".equals(result.get("error_type"))) {
+                    return ResponseEntity.status(503).body(result);
+                }
+                return ResponseEntity.badRequest().body(result);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                "status", "error",
+                "message", "결제 처리 중 서버 오류가 발생했습니다"
+            ));
+        }
+    }
+    
+    /**
+     * 서비스 상태 체크
+     */
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, Object>> healthCheck() {
+        Map<String, Object> response = Map.of(
+            "status", "UP",
+            "service", "cart-service",
+            "port", "8084",
+            "timestamp", System.currentTimeMillis(),
+            "version", appVersion,
+            "description", "장바구니 서비스 - Circuit Breaker 지원 결제 기능"
+        );
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 서비스 버전 정보 조회
      */
     @GetMapping("/version")
     public ResponseEntity<Map<String, String>> getVersion() {
         Map<String, String> version = Map.of(
             "service", "cart-service",
             "version", appVersion,
-            "description", "장바구니 서비스 - 새로운 기능 추가",
-            "lastUpdated", "2025-08-26"
+            "description", "장바구니 서비스 - Payment Service Circuit Breaker 연동",
+            "lastUpdated", "2025-09-18",
+            "feature", "Istio Circuit Breaker 지원 결제"
         );
         return ResponseEntity.ok(version);
     }

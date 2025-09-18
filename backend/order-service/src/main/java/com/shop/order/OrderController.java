@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/orders")  // ✅ 수정: VirtualService와 일치하도록 변경
+@RequestMapping("/api/orders")
 @CrossOrigin(origins = "${CORS_ALLOWED_ORIGINS}")
 public class OrderController {
     
@@ -25,7 +25,7 @@ public class OrderController {
     private String appVersion;
     
     /**
-     * 주문 생성 (장애 테스트 지원)
+     * 주문 생성 (결제 완료 후 호출)
      */
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createOrder(@RequestBody Map<String, Object> request) {
@@ -35,28 +35,22 @@ public class OrderController {
             logger.info("주문 생성 요청: {}", request);
             
             Long userId = Long.valueOf(request.getOrDefault("userId", "1").toString());
-            Integer totalAmount = Integer.valueOf(request.getOrDefault("totalAmount", "50000").toString());
+            Integer totalAmount = Integer.valueOf(request.getOrDefault("totalAmount", "0").toString());
             
-            // 결제 데이터 추출 (장애 테스트용)
-            Map<String, Object> paymentData = null;
-            if (request.containsKey("test_failure") && (Boolean) request.get("test_failure")) {
-                paymentData = new HashMap<>();
-                paymentData.put("order_id", "ORDER_FAILURE_" + System.currentTimeMillis());
-                paymentData.put("receipt_id", "RECEIPT_FAILURE_" + System.currentTimeMillis());
-                paymentData.put("price", totalAmount);
-                paymentData.put("order_name", "장애 테스트 상품");
-                paymentData.put("buyer_name", "FAILURE_USER");
-                paymentData.put("method", "card");
+            if (totalAmount <= 0) {
+                response.put("status", "error");
+                response.put("message", "주문 금액이 올바르지 않습니다");
+                return ResponseEntity.badRequest().body(response);
             }
             
-            Order order = orderService.createOrder(userId, totalAmount, paymentData);
+            Order order = orderService.createOrder(userId, totalAmount);
             
             if (order != null) {
                 response.put("status", "success");
                 response.put("message", "주문이 생성되었습니다");
                 response.put("data", order);
                 
-                logger.info("주문 생성 성공: ID={}, Status={}", order.getId(), order.getStatus());
+                logger.info("주문 생성 성공: ID={}", order.getId());
                 return ResponseEntity.ok(response);
             } else {
                 response.put("status", "error");
@@ -66,6 +60,39 @@ public class OrderController {
             
         } catch (Exception e) {
             logger.error("주문 생성 중 오류: {}", e.getMessage(), e);
+            response.put("status", "error");
+            response.put("message", "서버 오류: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+    
+    /**
+     * 결제 완료 후 주문 완료 처리
+     */
+    @PostMapping("/{orderId}/complete")
+    public ResponseEntity<Map<String, Object>> completeOrder(
+            @PathVariable Long orderId, 
+            @RequestBody Map<String, String> request) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            String paymentId = request.get("paymentId");
+            Order order = orderService.completeOrder(orderId, paymentId);
+            
+            if (order != null) {
+                response.put("status", "success");
+                response.put("message", "주문이 완료되었습니다");
+                response.put("data", order);
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("status", "error");
+                response.put("message", "주문 완료 처리에 실패했습니다");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+        } catch (Exception e) {
+            logger.error("주문 완료 처리 실패: orderId={}, error={}", orderId, e.getMessage());
             response.put("status", "error");
             response.put("message", "서버 오류: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);
@@ -83,39 +110,6 @@ public class OrderController {
         } catch (Exception e) {
             logger.error("주문 목록 조회 실패: userId={}, error={}", userId, e.getMessage());
             return ResponseEntity.internalServerError().build();
-        }
-    }
-    
-    /**
-     * 주문 상태 업데이트
-     */
-    @PutMapping("/{orderId}/status")
-    public ResponseEntity<Map<String, Object>> updateOrderStatus(
-            @PathVariable Long orderId, 
-            @RequestBody Map<String, String> request) {
-        
-        Map<String, Object> response = new HashMap<>();
-        
-        try {
-            String status = request.get("status");
-            Order order = orderService.updateOrderStatus(orderId, status);
-            
-            if (order != null) {
-                response.put("status", "success");
-                response.put("message", "주문 상태가 업데이트되었습니다");
-                response.put("data", order);
-                return ResponseEntity.ok(response);
-            } else {
-                response.put("status", "error");
-                response.put("message", "주문 상태 업데이트에 실패했습니다");
-                return ResponseEntity.badRequest().body(response);
-            }
-            
-        } catch (Exception e) {
-            logger.error("주문 상태 업데이트 실패: orderId={}, error={}", orderId, e.getMessage());
-            response.put("status", "error");
-            response.put("message", "서버 오류: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
         }
     }
     
@@ -145,9 +139,10 @@ public class OrderController {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "UP");
         response.put("service", "order-service");
-        response.put("port", "8082");  // ✅ 수정: VirtualService의 포트와 일치
+        response.put("port", "8082");
         response.put("timestamp", System.currentTimeMillis());
         response.put("version", appVersion);
+        response.put("description", "주문 관리 서비스 - 결제 완료 후 주문 생성");
         
         return ResponseEntity.ok(response);
     }
@@ -160,9 +155,9 @@ public class OrderController {
         Map<String, String> version = new HashMap<>();
         version.put("service", "order-service");
         version.put("version", appVersion);
-        version.put("description", "주문 처리 서비스 - Istio Outlier Detection 연동");
+        version.put("description", "주문 관리 서비스 - 결제 후 주문 생성");
         version.put("lastUpdated", "2025-09-18");
-        version.put("feature", "Payment Service 장애 테스트 지원");
+        version.put("feature", "결제 완료 후 주문 상태 관리");
         
         return ResponseEntity.ok(version);
     }
