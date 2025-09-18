@@ -7,11 +7,13 @@ function Cart({ user }) {
   const [cartItems, setCartItems] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
   const [userEmail, setUserEmail] = useState('');
+  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown'); // 추가
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchCartItems();
     fetchUserEmail();
+    checkPaymentServiceStatus(); // 추가
   }, []);
 
   const fetchUserEmail = async () => {
@@ -39,6 +41,21 @@ function Cart({ user }) {
       setCartItems(response.data);
     } catch (error) {
       console.error('장바구니 로딩 실패:', error);
+    }
+  };
+
+  // Payment Service 상태 확인
+  const checkPaymentServiceStatus = async () => {
+    try {
+      const response = await fetch(`${API_ENDPOINTS.PAYMENT}/api/payment/health`);
+      if (response.ok) {
+        setPaymentServiceStatus('available');
+      } else {
+        setPaymentServiceStatus('unavailable');
+      }
+    } catch (error) {
+      console.error('Payment Service 상태 확인 실패:', error);
+      setPaymentServiceStatus('unavailable');
     }
   };
 
@@ -71,6 +88,12 @@ function Cart({ user }) {
       return;
     }
 
+    // Payment Service 상태 확인
+    if (paymentServiceStatus === 'unavailable') {
+      alert('⚠️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n잠시 후 다시 시도해주세요.');
+      return;
+    }
+
     // 장바구니 데이터를 결제 페이지로 전달
     navigate('/payment', {
       state: {
@@ -81,9 +104,107 @@ function Cart({ user }) {
     });
   };
 
+  // Cart Service를 통한 Circuit Breaker 테스트
+  const handleCircuitBreakerPayment = async () => {
+    if (cartItems.length === 0) {
+      alert('장바구니가 비어있습니다.');
+      return;
+    }
+
+    setIsOrdering(true);
+    
+    try {
+      const paymentData = {
+        receipt_id: `RECEIPT_CART_${Date.now()}`,
+        buyer_name: "정상고객",
+        method: "card"
+      };
+
+      const response = await fetch(`${API_ENDPOINTS.CART}/api/cart/1/payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Email': userEmail || 'demo@kubox.shop'
+        },
+        body: JSON.stringify(paymentData)
+      });
+
+      const result = await response.json();
+
+      if (response.status === 503) {
+        alert('🛡️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n시스템이 안정화될 때까지 잠시 기다려주세요.');
+      } else if (response.ok && result.status === 'success') {
+        alert('🎉 결제가 완료되었습니다!');
+        fetchCartItems(); // 장바구니 새로고침 (비워짐)
+      } else {
+        alert(`❌ 결제 실패: ${result.message || '알 수 없는 오류'}`);
+      }
+    } catch (error) {
+      alert('❌ 결제 요청 중 오류가 발생했습니다.');
+    } finally {
+      setIsOrdering(false);
+    }
+  };
+
+  const getPaymentButtonStyle = () => {
+    if (paymentServiceStatus === 'unavailable') {
+      return {
+        background: '#6c757d',
+        cursor: 'not-allowed',
+        opacity: 0.6
+      };
+    }
+    return {
+      background: '#007bff',
+      cursor: 'pointer'
+    };
+  };
+
+  const getPaymentStatusMessage = () => {
+    switch (paymentServiceStatus) {
+      case 'available':
+        return '✅ 결제 서비스 정상';
+      case 'unavailable':
+        return '⚠️ 결제 서비스 일시 중단';
+      default:
+        return '🔄 결제 서비스 상태 확인 중...';
+    }
+  };
+
   return (
     <div className="container">
       <h2 style={{ padding: '2rem 0 1rem' }}>장바구니</h2>
+      
+      {/* 결제 서비스 상태 표시 */}
+      <div style={{
+        background: paymentServiceStatus === 'available' ? '#d4edda' : 
+                   paymentServiceStatus === 'unavailable' ? '#f8d7da' : '#fff3cd',
+        border: `1px solid ${paymentServiceStatus === 'available' ? '#c3e6cb' : 
+                            paymentServiceStatus === 'unavailable' ? '#f5c6cb' : '#ffeaa7'}`,
+        padding: '10px',
+        borderRadius: '5px',
+        marginBottom: '20px',
+        textAlign: 'center',
+        fontSize: '14px',
+        fontWeight: 'bold'
+      }}>
+        {getPaymentStatusMessage()}
+        <button 
+          onClick={checkPaymentServiceStatus}
+          style={{ 
+            marginLeft: '10px', 
+            padding: '2px 8px', 
+            fontSize: '12px',
+            border: 'none',
+            borderRadius: '3px',
+            background: '#17a2b8',
+            color: 'white',
+            cursor: 'pointer'
+          }}
+        >
+          새로고침
+        </button>
+      </div>
       
       {cartItems.length === 0 ? (
         <p>장바구니가 비어있습니다.</p>
@@ -138,17 +259,28 @@ function Cart({ user }) {
               <button 
                 className="btn btn-primary" 
                 onClick={handleBootpayPayment}
-                disabled={isOrdering}
-                style={{ 
-                  background: '#007bff',
-                  cursor: 'pointer'
-                }}
+                disabled={isOrdering || paymentServiceStatus === 'unavailable'}
+                style={getPaymentButtonStyle()}
               >
                 💳 BootPay로 결제하기
               </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleCircuitBreakerPayment}
+                disabled={isOrdering}
+                style={{ 
+                  background: '#6c757d',
+                  cursor: 'pointer'
+                }}
+              >
+                🛡️ Circuit Breaker 테스트
+              </button>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-              BootPay: 카드결제 + 카카오페이 (실제 결제)
+              {paymentServiceStatus === 'unavailable' 
+                ? '⚠️ 결제 서비스 복구 대기 중...' 
+                : 'BootPay: 카드결제 + 카카오페이 (실제 결제)'
+              }
             </p>
           </div>
         </>
