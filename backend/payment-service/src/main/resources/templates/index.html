@@ -1,43 +1,385 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Payment Service</title>
+    <title>Payment Service - 장애 테스트</title>
     <meta charset="UTF-8">
     <style>
-        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
-        .status { color: #28a745; font-weight: bold; }
-        .api-list { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
-        code { background: #e9ecef; padding: 2px 4px; border-radius: 3px; }
+        body { 
+            font-family: Arial; 
+            padding: 20px; 
+            background: #f5f5f5; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status { 
+            color: #28a745; 
+            font-weight: bold; 
+            font-size: 18px;
+        }
+        .failure-status {
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .api-list { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin: 20px 0; 
+        }
+        code { 
+            background: #e9ecef; 
+            padding: 2px 4px; 
+            border-radius: 3px; 
+        }
+        .test-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .failure-section {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .success-section {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: black;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        button:hover {
+            opacity: 0.8;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .demo-section {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .version-info {
+            background: #e1f5fe;
+            border-left: 4px solid #0277bd;
+            padding: 15px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🏪 Payment Service</h1>
-        <p class="status">✅ 서비스가 정상적으로 실행 중입니다!</p>
+        <h1>🏪 Payment Service v1.1.0 - Blue-Green 배포 테스트</h1>
         
-        <h3>📋 API 엔드포인트</h3>
-        <div class="api-list">
-            <p><strong>결제 준비:</strong><br>
-            <code>POST /api/payments/prepare</code></p>
-            
-            <p><strong>결제 검증:</strong><br>
-            <code>POST /api/payments/verify</code></p>
-            
-            <p><strong>사용자 결제내역:</strong><br>
-            <code>GET /api/payments/user/{userId}</code></p>
-            
-            <p><strong>주문별 결제정보:</strong><br>
-            <code>GET /api/payments/order/{orderId}</code></p>
+        <div class="version-info">
+            <h3>🚀 버전 정보</h3>
+            <p><strong>현재 버전:</strong> v1.1.0 (장애 시뮬레이션 기능 포함)</p>
+            <p><strong>이전 버전:</strong> v1.0.0 (기본 결제 기능만)</p>
+            <p><strong>배포 방식:</strong> Blue-Green 배포</p>
         </div>
         
-        <h3>🧪 테스트</h3>
-        <p>터미널에서 curl 명령어로 API 테스트:</p>
-        <div class="api-list">
-            <code>curl -X POST http://localhost:8083/api/payments/prepare -H "Content-Type: application/json" -d '{"orderId":123,"userId":1,"amount":1000,"orderName":"테스트"}'</code>
+        <div id="serviceStatus">
+            <p class="status">✅ 서비스가 정상적으로 실행 중입니다!</p>
         </div>
         
-        <p><small>Port: 8083 | MySQL 연결됨 | BootPay 설정 완료</small></p>
+        <!-- 장애 모드 제어 섹션 -->
+        <div class="failure-section">
+            <h3>🔥 장애 시뮬레이션 제어</h3>
+            <p><strong>⚠️ 이 기능은 v1.1.0에서만 제공됩니다!</strong></p>
+            <div id="failureStatus">
+                <p><strong>현재 상태:</strong> <span id="currentStatus">확인 중...</span></p>
+                <p><strong>장애 타입:</strong> <span id="currentType">-</span></p>
+            </div>
+            
+            <div style="margin: 15px 0;">
+                <button class="btn-danger" onclick="enableFailure(2)">🚨 에러 장애 모드 ON</button>
+                <button class="btn-warning" onclick="enableFailure(1)">⏰ 타임아웃 장애 모드 ON</button>
+                <button class="btn-success" onclick="disableFailure()">✅ 장애 모드 OFF</button>
+                <button class="btn-info" onclick="checkFailureStatus()">📊 상태 확인</button>
+            </div>
+            
+            <div class="result" id="failureResult"></div>
+        </div>
+
+        <!-- 시연용 테스트 섹션 -->
+        <div class="demo-section">
+            <h3>🎬 Blue-Green 배포 시연</h3>
+            <p><strong>시나리오:</strong></p>
+            <ol>
+                <li><strong>정상 테스트:</strong> v1.1.0에서 정상 결제 확인</li>
+                <li><strong>장애 발생:</strong> 장애 스위치로 의도적 장애 발생</li>
+                <li><strong>ArgoCD 롤백:</strong> v1.0.0으로 즉시 롤백</li>
+                <li><strong>즉시 복구:</strong> 이 페이지와 장애 기능이 사라지고 정상 서비스 복구</li>
+            </ol>
+            
+            <div style="margin: 15px 0;">
+                <button class="btn-success" onclick="testNormalPayment()">✅ 정상 결제 테스트</button>
+                <button class="btn-danger" onclick="testFailurePayment()">💥 장애 결제 테스트</button>
+                <button class="btn-info" onclick="testBulkFailure()">🔄 연속 장애 테스트 (Circuit Breaker)</button>
+            </div>
+            
+            <div class="result" id="testResult"></div>
+        </div>
+        
+        <!-- 기존 API 정보 -->
+        <div class="success-section">
+            <h3>📋 API 엔드포인트</h3>
+            <div class="api-list">
+                <p><strong>결제 검증:</strong><br>
+                <code>POST /api/payment/verify</code></p>
+                
+                <p><strong>결제 취소:</strong><br>
+                <code>POST /api/payment/cancel</code></p>
+                
+                <p><strong>결제 내역:</strong><br>
+                <code>GET /api/payment/history</code></p>
+                
+                <p><strong>🆕 장애 모드 제어:</strong><br>
+                <code>POST /api/payment/failure/toggle</code></p>
+                
+                <p><strong>🆕 장애 상태 확인:</strong><br>
+                <code>GET /api/payment/failure/status</code></p>
+            </div>
+        </div>
+        
+        <p><small>Port: 8083 | MySQL 연결됨 | BootPay 설정 완료 | 🎭 v1.1.0 장애 시뮬레이션 지원</small></p>
     </div>
+
+    <script>
+        // 페이지 로드 시 상태 확인
+        window.onload = function() {
+            checkFailureStatus();
+        };
+
+        // 장애 모드 활성화
+        function enableFailure(type) {
+            const typeNames = {1: '타임아웃', 2: '에러', 3: '예외'};
+            
+            fetch('/api/payment/failure/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    enable: true,
+                    type: type
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('failureResult').textContent = 
+                    `${typeNames[type]} 장애 모드 활성화:\n${JSON.stringify(data, null, 2)}`;
+                checkFailureStatus();
+            })
+            .catch(error => {
+                document.getElementById('failureResult').textContent = 'Error: ' + error;
+            });
+        }
+
+        // 장애 모드 비활성화
+        function disableFailure() {
+            fetch('/api/payment/failure/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    enable: false
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('failureResult').textContent = 
+                    `장애 모드 비활성화:\n${JSON.stringify(data, null, 2)}`;
+                checkFailureStatus();
+            })
+            .catch(error => {
+                document.getElementById('failureResult').textContent = 'Error: ' + error;
+            });
+        }
+
+        // 장애 상태 확인
+        function checkFailureStatus() {
+            fetch('/api/payment/failure/status')
+            .then(response => response.json())
+            .then(data => {
+                const status = data.failureMode ? '🔥 장애 모드 활성화' : '✅ 정상 모드';
+                const type = data.failureType === 1 ? '타임아웃' : 
+                            data.failureType === 2 ? '에러' : 
+                            data.failureType === 3 ? '예외' : '없음';
+                
+                document.getElementById('currentStatus').textContent = status;
+                document.getElementById('currentType').textContent = type;
+                
+                // 서비스 상태 업데이트
+                if (data.failureMode) {
+                    document.getElementById('serviceStatus').innerHTML = 
+                        '<p class="failure-status">🔥 장애 시뮬레이션 모드 활성화</p>';
+                } else {
+                    document.getElementById('serviceStatus').innerHTML = 
+                        '<p class="status">✅ 서비스가 정상적으로 실행 중입니다!</p>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('currentStatus').textContent = '확인 실패';
+                console.error('Status check error:', error);
+            });
+        }
+
+        // 정상 결제 테스트
+        function testNormalPayment() {
+            const paymentData = {
+                order_id: "ORDER_NORMAL_" + Date.now(),
+                receipt_id: "RECEIPT_NORMAL_" + Date.now(),
+                price: 25000,
+                order_name: "정상 테스트 상품",
+                buyer_name: "정상고객",
+                method: "card"
+            };
+
+            fetch('/api/payment/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Email': 'demo@kubox.shop'
+                },
+                body: JSON.stringify(paymentData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('testResult').textContent = 
+                    `✅ 정상 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`;
+            })
+            .catch(error => {
+                document.getElementById('testResult').textContent = 
+                    `❌ 정상 결제 테스트 오류:\n${error}`;
+            });
+        }
+
+        // 장애 결제 테스트
+        function testFailurePayment() {
+            const paymentData = {
+                order_id: "ORDER_FAILURE_" + Date.now(),
+                receipt_id: "RECEIPT_FAILURE_" + Date.now(),
+                price: 50000,
+                order_name: "장애 테스트 상품",
+                buyer_name: "FAILURE_USER",
+                method: "card"
+            };
+
+            fetch('/api/payment/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Email': 'demo@kubox.shop'
+                },
+                body: JSON.stringify(paymentData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('testResult').textContent = 
+                    `💥 장애 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`;
+            })
+            .catch(error => {
+                document.getElementById('testResult').textContent = 
+                    `💥 장애 결제 테스트 (예상된 오류):\n${error.message}`;
+            });
+        }
+
+        // 연속 장애 테스트 (Circuit Breaker 트리거)
+        function testBulkFailure() {
+            document.getElementById('testResult').textContent = '🔄 연속 장애 테스트 시작...\n';
+            
+            let results = [];
+            let promises = [];
+            
+            for (let i = 1; i <= 5; i++) {
+                const paymentData = {
+                    order_id: "ORDER_BULK_FAILURE_" + i,
+                    receipt_id: "RECEIPT_BULK_FAILURE_" + i,
+                    price: 50000,
+                    order_name: "연속 장애 테스트",
+                    buyer_name: "FAILURE_USER",
+                    method: "card"
+                };
+
+                const promise = fetch('/api/payment/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Email': 'demo@kubox.shop'
+                    },
+                    body: JSON.stringify(paymentData)
+                })
+                .then(response => {
+                    results.push(`시도 ${i}: HTTP ${response.status}`);
+                    return response.text();
+                })
+                .catch(error => {
+                    results.push(`시도 ${i}: 에러 - ${error.message}`);
+                });
+                
+                promises.push(promise);
+            }
+            
+            Promise.all(promises).then(() => {
+                document.getElementById('testResult').textContent = 
+                    `🔄 연속 장애 테스트 완료:\n${results.join('\n')}\n\n🎯 이제 Istio Circuit Breaker가 동작했을 것입니다!\n\n📋 다음 단계: ArgoCD에서 v1.0.0으로 롤백하여 Blue-Green 배포 효과 확인`;
+            });
+        }
+    </script>
 </body>
 </html>
