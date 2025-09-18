@@ -9,6 +9,9 @@ const FailureTestPanel = () => {
   const [testResult, setTestResult] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // API Base URL 설정
+  const API_BASE_URL = process.env.REACT_APP_PAYMENT_API_URL || 'https://api.kubox.shop';
+
   // 컴포넌트 마운트 시 상태 확인
   useEffect(() => {
     checkFailureStatus();
@@ -17,11 +20,12 @@ const FailureTestPanel = () => {
   // 장애 상태 확인
   const checkFailureStatus = async () => {
     try {
-      const response = await fetch('/api/payment/failure/status');
+      const response = await fetch(`${API_BASE_URL}/api/payment/failure/status`);
       const data = await response.json();
       setFailureStatus(data);
     } catch (error) {
       console.error('Failed to check failure status:', error);
+      setTestResult(`❌ API 연결 실패: ${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/failure/status`);
     }
   };
 
@@ -29,7 +33,7 @@ const FailureTestPanel = () => {
   const toggleFailureMode = async (enable, type = 2) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/payment/failure/toggle', {
+      const response = await fetch(`${API_BASE_URL}/api/payment/failure/toggle`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -44,7 +48,7 @@ const FailureTestPanel = () => {
       setTestResult(JSON.stringify(data, null, 2));
       await checkFailureStatus(); // 상태 업데이트
     } catch (error) {
-      setTestResult(`Error: ${error.message}`);
+      setTestResult(`❌ 장애 모드 토글 실패: ${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/failure/toggle`);
     } finally {
       setLoading(false);
     }
@@ -63,7 +67,7 @@ const FailureTestPanel = () => {
     };
 
     try {
-      const response = await fetch('/api/payment/verify', {
+      const response = await fetch(`${API_BASE_URL}/api/payment/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +79,7 @@ const FailureTestPanel = () => {
       const data = await response.json();
       setTestResult(`✅ 정상 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`);
     } catch (error) {
-      setTestResult(`❌ 정상 결제 테스트 오류:\n${error.message}`);
+      setTestResult(`❌ 정상 결제 테스트 오류: ${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/verify`);
     } finally {
       setLoading(false);
     }
@@ -94,7 +98,7 @@ const FailureTestPanel = () => {
     };
 
     try {
-      const response = await fetch('/api/payment/verify', {
+      const response = await fetch(`${API_BASE_URL}/api/payment/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -111,7 +115,7 @@ const FailureTestPanel = () => {
       const data = await response.json();
       setTestResult(`💥 장애 결제 테스트 결과:\n${JSON.stringify(data, null, 2)}`);
     } catch (error) {
-      setTestResult(`💥 장애 결제 테스트 (예상된 오류):\n${error.message}`);
+      setTestResult(`💥 장애 결제 테스트 (예상된 오류):\n${error.message}\n\nAPI URL: ${API_BASE_URL}/api/payment/verify`);
     } finally {
       setLoading(false);
     }
@@ -135,7 +139,7 @@ const FailureTestPanel = () => {
       };
 
       try {
-        const response = await fetch('/api/payment/verify', {
+        const response = await fetch(`${API_BASE_URL}/api/payment/verify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -153,7 +157,7 @@ const FailureTestPanel = () => {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    setTestResult(`🔄 연속 장애 테스트 완료:\n${results.join('\n')}\n\n🎯 Istio Circuit Breaker가 동작했을 것입니다!\n\n📋 다음 단계: ArgoCD에서 이전 버전으로 롤백하여 Blue-Green 배포 효과 확인`);
+    setTestResult(`🔄 연속 장애 테스트 완료:\n${results.join('\n')}\n\n🎯 Istio Circuit Breaker가 동작했을 것입니다!\n\nAPI URL: ${API_BASE_URL}/api/payment/verify\n\n📋 다음 단계: ArgoCD에서 이전 버전으로 롤백하여 Blue-Green 배포 효과 확인`);
     setLoading(false);
   };
 
@@ -172,7 +176,7 @@ const FailureTestPanel = () => {
       };
 
       try {
-        const response = await fetch('/api/orders/create', {
+        const response = await fetch(`${API_BASE_URL}/api/orders/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -190,7 +194,7 @@ const FailureTestPanel = () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    setTestResult(`🛒 Order Service 장애 테스트 완료:\n${results.join('\n')}\n\n🔄 Order → Payment 서비스 호출 시 Circuit Breaker 동작 확인!`);
+    setTestResult(`🛒 Order Service 장애 테스트 완료:\n${results.join('\n')}\n\nAPI URL: ${API_BASE_URL}/api/orders/create\n\n🔄 Order → Payment 서비스 호출 시 Circuit Breaker 동작 확인!`);
     setLoading(false);
   };
 
@@ -215,6 +219,9 @@ const FailureTestPanel = () => {
         </div>
         <div className="status-indicator" style={{ color: getStatusColor() }}>
           {getStatusText()}
+        </div>
+        <div className="api-info">
+          <small>API Base URL: {API_BASE_URL}</small>
         </div>
       </div>
 
