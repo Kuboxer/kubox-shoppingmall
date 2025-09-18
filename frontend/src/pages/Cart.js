@@ -7,13 +7,17 @@ function Cart({ user }) {
   const [cartItems, setCartItems] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown'); // 추가
+  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown');
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchCartItems();
     fetchUserEmail();
-    checkPaymentServiceStatus(); // 추가
+    checkPaymentServiceStatus();
+    
+    // 30초마다 자동으로 Payment Service 상태 확인
+    const interval = setInterval(checkPaymentServiceStatus, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchUserEmail = async () => {
