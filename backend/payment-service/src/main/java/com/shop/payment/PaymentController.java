@@ -1,5 +1,6 @@
 package com.shop.payment;
 
+import com.shop.payment.failure.PaymentFailureController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +29,7 @@ public class PaymentController {
     private String appVersion;
     
     /**
-     * 결제 검증
+     * 결제 검증 (장애 시뮬레이션 기능 포함)
      */
     @PostMapping("/verify")
     public ResponseEntity<Map<String, Object>> verifyPayment(
@@ -39,6 +40,13 @@ public class PaymentController {
         
         try {
             logger.info("결제 검증 요청 - 사용자: {}", userEmail);
+            logger.info("요청 데이터: {}", requestData);
+            
+            // 장애 시뮬레이션 체크
+            if (PaymentFailureController.shouldFail(requestData)) {
+                logger.warn("장애 시뮬레이션 모드 - 의도적 장애 발생");
+                PaymentFailureController.simulateFailure();
+            }
             
             // receipt_id 추출
             String receiptId = null;
@@ -64,11 +72,14 @@ public class PaymentController {
         } catch (Exception e) {
             logger.error("결제 검증 중 예외 발생: {}", e.getMessage(), e);
             
-            response.put("status", "success");
-            response.put("message", "결제 완료");
-            response.put("error", e.getMessage());
+            // 장애 상황에서는 에러 응답 반환
+            response.put("status", "error");
+            response.put("message", "결제 처리 중 오류가 발생했습니다: " + e.getMessage());
+            response.put("error_type", e.getClass().getSimpleName());
+            response.put("timestamp", System.currentTimeMillis());
             
-            return ResponseEntity.ok(response);
+            // 500 에러로 응답하여 Circuit Breaker 트리거
+            return ResponseEntity.internalServerError().body(response);
         }
     }
     
@@ -79,6 +90,12 @@ public class PaymentController {
     public ResponseEntity<Map<String, Object>> cancelPayment(
             @RequestBody Map<String, Object> requestData) {
         try {
+            // 장애 시뮬레이션 체크
+            if (PaymentFailureController.shouldFail(requestData)) {
+                logger.warn("장애 시뮬레이션 모드 - 결제 취소 장애 발생");
+                PaymentFailureController.simulateFailure();
+            }
+            
             String receiptId = (String) requestData.get("receipt_id");
             String reason = (String) requestData.getOrDefault("reason", "고객 요청");
             
@@ -93,7 +110,7 @@ public class PaymentController {
             errorResponse.put("status", "error");
             errorResponse.put("message", e.getMessage());
             
-            return ResponseEntity.badRequest().body(errorResponse);
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
     
@@ -127,7 +144,7 @@ public class PaymentController {
     }
     
     /**
-     * 서비스 상태 체크
+     * 서비스 상태 체크 (장애 모드에서도 동작)
      */
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> healthCheck() {
@@ -137,6 +154,11 @@ public class PaymentController {
             response.put("service", "payment-service");
             response.put("port", "8083");
             response.put("timestamp", System.currentTimeMillis());
+            response.put("version", appVersion);
+            
+            // 장애 모드 상태도 포함
+            response.put("failure_mode", false); // 실제 장애 모드 상태를 확인하려면 /failure/status 사용
+            
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(paymentService.getDefaultResponse());
@@ -152,7 +174,8 @@ public class PaymentController {
         version.put("service", "payment-service");
         version.put("version", appVersion);
         version.put("description", "결제 처리 서비스 - BootPay 연동 및 Redis 캠싱");
-        version.put("lastUpdated", "2025-08-26");
+        version.put("lastUpdated", "2025-09-18");
+        version.put("feature", "Circuit Breaker 장애 시뮬레이션 지원");
         return ResponseEntity.ok(version);
     }
     

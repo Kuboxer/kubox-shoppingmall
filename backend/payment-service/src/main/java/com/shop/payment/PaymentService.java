@@ -1,6 +1,7 @@
 package com.shop.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shop.payment.failure.PaymentFailureController;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -90,10 +91,16 @@ public class PaymentService {
     }
     
     /**
-     * 결제 검증
+     * 결제 검증 (장애 시뮬레이션 지원)
      */
     @Transactional
     public Map<String, Object> verifyPayment(String receiptId, String userEmail, Map<String, Object> frontendData) throws Exception {
+        
+        // 장애 시뮬레이션 체크 (추가 체크포인트)
+        if (PaymentFailureController.shouldFail(frontendData)) {
+            System.out.println("PaymentService에서 장애 시뮬레이션 감지 - 장애 발생");
+            PaymentFailureController.simulateFailure();
+        }
         
         // Redis에서 검증 결과 캐시 확인
         String verifyKey = getPaymentVerifyKey(receiptId);
@@ -136,6 +143,12 @@ public class PaymentService {
             // 진행 중 상태 저장
             String processingKey = getPaymentProcessingKey(orderId);
             redisTemplate.opsForValue().set(processingKey, "processing", 10, TimeUnit.MINUTES);
+            
+            // 장애 시뮬레이션 - 처리 중간에 장애 발생
+            if (PaymentFailureController.shouldFail(frontendData)) {
+                System.out.println("결제 처리 중간 단계에서 장애 시뮬레이션 발생");
+                PaymentFailureController.simulateFailure();
+            }
             
             // 프론트엔드에서 전달받은 실제 결제 데이터 사용
             Map<String, Object> paymentData = new HashMap<>();
@@ -183,7 +196,7 @@ public class PaymentService {
     }
     
     /**
-     * 결제 취소
+     * 결제 취소 (장애 시뮬레이션 지원)
      */
     public Map<String, Object> cancelPayment(String receiptId, String reason) throws Exception {
         
@@ -198,6 +211,12 @@ public class PaymentService {
         cancelRequest.put("receipt_id", receiptId);
         cancelRequest.put("cancel_username", "관리자");
         cancelRequest.put("cancel_message", reason);
+        
+        // 장애 시뮬레이션 체크
+        if (PaymentFailureController.shouldFail(cancelRequest)) {
+            System.out.println("결제 취소 중 장애 시뮬레이션 발생");
+            PaymentFailureController.simulateFailure();
+        }
         
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -288,6 +307,8 @@ public class PaymentService {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "error");
         response.put("message", "Payment service temporarily unavailable");
+        response.put("service", "payment-service");
+        response.put("timestamp", System.currentTimeMillis());
         return response;
     }
 }
