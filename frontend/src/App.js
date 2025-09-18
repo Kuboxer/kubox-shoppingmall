@@ -10,6 +10,7 @@ import Payment from './pages/Payment';
 import OrderHistory from './pages/OrderHistory';
 import PaymentSuccess from './components/payment/PaymentSuccess';
 import PaymentFail from './components/payment/PaymentFail';
+import FailureTestPanel from './components/FailureTestPanel'; // 추가
 
 function App() {
   const [user, setUser] = useState(null);
@@ -57,6 +58,8 @@ function App() {
           />
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/fail" element={<PaymentFail />} />
+          {/* 🎭 Blue-Green 배포 시연용 장애 테스트 패널 */}
+          <Route path="/admin/failure-test" element={<FailureTestPanel />} />
         </Routes>
       </div>
     </Router>
