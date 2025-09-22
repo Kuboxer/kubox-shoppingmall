@@ -8,6 +8,7 @@ function Cart({ user }) {
   const [isOrdering, setIsOrdering] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown');
+  const [lastStatusCheck, setLastStatusCheck] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -15,8 +16,8 @@ function Cart({ user }) {
     fetchUserEmail();
     checkPaymentServiceStatus();
     
-    // 10초마다 자동으로 Payment Service 상태 확인
-    const interval = setInterval(checkPaymentServiceStatus, 10000);
+    // 5초마다 자동으로 Payment Service 상태 확인
+    const interval = setInterval(checkPaymentServiceStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -48,43 +49,54 @@ function Cart({ user }) {
     }
   };
 
-  // Payment Service 상태 확인 (실제 결제 API 테스트)
+  // Payment Service 상태 확인 (강화된 장애 감지)
   const checkPaymentServiceStatus = async () => {
+    const now = new Date().toLocaleTimeString();
+    console.log(`[${now}] Payment Service 상태 확인 시작...`);
+    
     try {
-      console.log('Payment Service 상태 확인 중...');
-      
-      // 실제 결제 API로 테스트 요청 (가벼운 테스트)
+      // 실제 결제 API로 테스트 요청
       const testPayload = {
-        order_id: `TEST_${Date.now()}`,
-        receipt_id: `TEST_RECEIPT_${Date.now()}`,
+        order_id: `STATUS_CHECK_${Date.now()}`,
+        receipt_id: `STATUS_RECEIPT_${Date.now()}`,
         price: 1000,
-        order_name: "상태 확인 테스트",
-        buyer_name: "STATUS_CHECK", // 특별한 키워드
+        order_name: "서비스 상태 확인",
+        buyer_name: "SYSTEM_CHECK",
         method: "test"
       };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3초 타임아웃
 
       const response = await fetch(`${API_ENDPOINTS.PAYMENT}/api/payment/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Email': 'status-check@kubox.shop'
+          'User-Email': 'system-check@kubox.shop'
         },
-        body: JSON.stringify(testPayload)
+        body: JSON.stringify(testPayload),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
+      console.log(`[${now}] Payment Service 응답:`, response.status);
+
       if (response.ok) {
-        console.log('✅ Payment Service 정상');
         setPaymentServiceStatus('available');
-      } else if (response.status >= 500) {
-        console.log('❌ Payment Service 장애 감지');
-        setPaymentServiceStatus('unavailable');
+        setLastStatusCheck(`${now} - ✅ 정상`);
+        console.log('✅ Payment Service 정상 동작');
       } else {
-        console.log('⚠️ Payment Service 응답 이상');
-        setPaymentServiceStatus('unknown');
+        // 4xx, 5xx 에러 모두 장애로 판단
+        setPaymentServiceStatus('unavailable');
+        setLastStatusCheck(`${now} - ❌ 장애 (HTTP ${response.status})`);
+        console.log(`❌ Payment Service 장애 감지: HTTP ${response.status}`);
       }
     } catch (error) {
-      console.error('❌ Payment Service 연결 실패:', error);
+      // 네트워크 오류, 타임아웃 등 모든 예외를 장애로 판단
       setPaymentServiceStatus('unavailable');
+      setLastStatusCheck(`${now} - ❌ 연결 실패`);
+      console.error(`❌ Payment Service 연결 실패:`, error.message);
     }
   };
 
@@ -117,87 +129,35 @@ function Cart({ user }) {
       return;
     }
 
-    // Payment Service 상태 확인
-    if (paymentServiceStatus === 'unavailable') {
-      alert('⚠️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n잠시 후 다시 시도해주세요.');
+    // Payment Service 상태 엄격하게 확인
+    if (paymentServiceStatus !== 'available') {
+      alert(`🚫 결제 서비스를 사용할 수 없습니다.\n\n상태: ${paymentServiceStatus === 'unavailable' ? '장애 감지됨' : '상태 확인 중'}\n마지막 확인: ${lastStatusCheck}\n\n잠시 후 다시 시도해주세요.`);
       return;
     }
 
-    if (paymentServiceStatus === 'unknown') {
-      alert('🔄 결제 서비스 상태를 확인 중입니다.\n잠시 후 다시 시도해주세요.');
-      return;
-    }
-
-    // 장바구니 데이터를 결제 페이지로 전달
-    navigate('/payment', {
-      state: {
-        cartItems: cartItems,
-        totalAmount: getTotalPrice(),
-        userEmail: userEmail || 'guest@example.com'
+    // 결제 페이지로 이동하기 전 한 번 더 확인
+    checkPaymentServiceStatus().then(() => {
+      if (paymentServiceStatus === 'available') {
+        navigate('/payment', {
+          state: {
+            cartItems: cartItems,
+            totalAmount: getTotalPrice(),
+            userEmail: userEmail || 'guest@example.com'
+          }
+        });
+      } else {
+        alert('🚫 결제 진행 중 서비스 상태가 변경되었습니다.\n다시 시도해주세요.');
       }
     });
   };
 
-  // Cart Service를 통한 Circuit Breaker 테스트
-  const handleCircuitBreakerPayment = async () => {
-    if (cartItems.length === 0) {
-      alert('장바구니가 비어있습니다.');
-      return;
-    }
-
-    setIsOrdering(true);
-    
-    try {
-      const paymentData = {
-        receipt_id: `RECEIPT_CART_${Date.now()}`,
-        buyer_name: "정상고객",
-        method: "card"
-      };
-
-      const response = await fetch(`${API_ENDPOINTS.CART}/api/cart/1/payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Email': userEmail || 'demo@kubox.shop'
-        },
-        body: JSON.stringify(paymentData)
-      });
-
-      const result = await response.json();
-
-      if (response.status === 503) {
-        alert('🛡️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n시스템이 안정화될 때까지 잠시 기다려주세요.');
-        // 상태 즉시 업데이트
-        setPaymentServiceStatus('unavailable');
-      } else if (response.ok && result.status === 'success') {
-        alert('🎉 결제가 완료되었습니다!');
-        fetchCartItems(); // 장바구니 새로고침 (비워짐)
-      } else {
-        alert(`❌ 결제 실패: ${result.message || '알 수 없는 오류'}`);
-        // 결제 실패 시에도 상태 확인
-        setTimeout(checkPaymentServiceStatus, 1000);
-      }
-    } catch (error) {
-      alert('❌ 결제 요청 중 오류가 발생했습니다.');
-      // 네트워크 오류 시에도 상태 확인
-      setTimeout(checkPaymentServiceStatus, 1000);
-    } finally {
-      setIsOrdering(false);
-    }
-  };
-
   const getPaymentButtonStyle = () => {
-    if (paymentServiceStatus === 'unavailable') {
+    if (paymentServiceStatus !== 'available') {
       return {
         background: '#dc3545',
         cursor: 'not-allowed',
-        opacity: 0.7
-      };
-    } else if (paymentServiceStatus === 'unknown') {
-      return {
-        background: '#ffc107',
-        cursor: 'not-allowed',
-        opacity: 0.7
+        opacity: 0.6,
+        transform: 'none'
       };
     }
     return {
@@ -209,9 +169,9 @@ function Cart({ user }) {
   const getPaymentStatusMessage = () => {
     switch (paymentServiceStatus) {
       case 'available':
-        return '✅ 결제 서비스 정상';
+        return '✅ 결제 서비스 정상 동작 중';
       case 'unavailable':
-        return '🔥 결제 서비스 장애 감지 - Circuit Breaker 동작 중';
+        return '🔥 결제 서비스 장애 감지 - 결제 차단됨';
       default:
         return '🔄 결제 서비스 상태 확인 중...';
     }
@@ -228,6 +188,8 @@ function Cart({ user }) {
     }
   };
 
+  const isPaymentDisabled = paymentServiceStatus !== 'available' || isOrdering;
+
   return (
     <div className="container">
       <h2 style={{ padding: '2rem 0 1rem' }}>장바구니</h2>
@@ -235,20 +197,25 @@ function Cart({ user }) {
       {/* 결제 서비스 상태 표시 */}
       <div style={{
         ...getStatusColor(),
-        border: `2px solid ${getStatusColor().border}`,
+        border: `3px solid ${getStatusColor().border}`,
         padding: '15px',
         borderRadius: '8px',
         marginBottom: '20px',
         textAlign: 'center',
-        fontSize: '14px',
+        fontSize: '15px',
         fontWeight: 'bold'
       }}>
-        {getPaymentStatusMessage()}
+        <div>{getPaymentStatusMessage()}</div>
+        {lastStatusCheck && (
+          <div style={{ fontSize: '12px', marginTop: '5px', opacity: 0.8 }}>
+            마지막 확인: {lastStatusCheck}
+          </div>
+        )}
         <button 
           onClick={checkPaymentServiceStatus}
           style={{ 
-            marginLeft: '10px', 
-            padding: '5px 10px', 
+            marginTop: '8px',
+            padding: '5px 12px', 
             fontSize: '12px',
             border: 'none',
             borderRadius: '4px',
@@ -257,87 +224,8 @@ function Cart({ user }) {
             cursor: 'pointer'
           }}
         >
-          상태 새로고침
+          지금 상태 확인
         </button>
-      </div>
-      
-      {/* Circuit Breaker 동작 원리 섹션 */}
-      <div style={{
-        background: '#f8f9fa',
-        border: '2px solid #e9ecef',
-        borderRadius: '10px',
-        padding: '20px',
-        marginBottom: '20px'
-      }}>
-        <h3 style={{ color: '#495057', marginBottom: '15px' }}>
-          🛡️ Circuit Breaker 동작 원리
-        </h3>
-        
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
-          gap: '15px',
-          marginBottom: '20px' 
-        }}>
-          <div style={{
-            background: '#d4edda',
-            border: '1px solid #c3e6cb',
-            borderRadius: '8px',
-            padding: '15px'
-          }}>
-            <h4 style={{ color: '#155724', marginBottom: '10px' }}>
-              🚫 직접 호출 (보호 없음)
-            </h4>
-            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px' }}>
-              <li style={{ color: '#155724', marginBottom: '5px' }}>Frontend → Payment Service</li>
-              <li style={{ color: '#721c24', marginBottom: '5px' }}>❌ 장애 시 사용자에게 직접 노출</li>
-              <li style={{ color: '#721c24', marginBottom: '5px' }}>❌ 500 에러 그대로 표시</li>
-              <li style={{ color: '#721c24' }}>❌ 시스템 부하 가중</li>
-            </ul>
-          </div>
-          
-          <div style={{
-            background: '#fff3cd',
-            border: '1px solid #ffeaa7',
-            borderRadius: '8px',
-            padding: '15px'
-          }}>
-            <h4 style={{ color: '#856404', marginBottom: '10px' }}>
-              🛡️ CIRCUIT BREAKER (보호됨)
-            </h4>
-            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px' }}>
-              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ Frontend → Cart Service → Payment Service</li>
-              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ 장애 감지 시 즉시 차단</li>
-              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ 503 응답으로 친화적 메시지</li>
-              <li style={{ color: '#155724' }}>✅ 시스템 보호 및 빠른 복구</li>
-            </ul>
-          </div>
-        </div>
-        
-        <div style={{
-          background: '#e3f2fd',
-          border: '1px solid #bbdefb',
-          borderRadius: '8px',
-          padding: '15px'
-        }}>
-          <h4 style={{ color: '#0d47a1', marginBottom: '10px' }}>
-            🎯 시연 순서:
-          </h4>
-          <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#1565c0' }}>
-            <li style={{ marginBottom: '5px' }}>
-              <strong>장애 모드 ON</strong> → Payment Service 장애 상태 만들기
-            </li>
-            <li style={{ marginBottom: '5px' }}>
-              <strong>상태 새로고침</strong> → 장애 감지 확인 (빨간색 표시)
-            </li>
-            <li style={{ marginBottom: '5px' }}>
-              <strong>결제 버튼 차단</strong> → 사용자 보호 확인
-            </li>
-            <li>
-              <strong>ArgoCD 롤백</strong> → 즉시 복구
-            </li>
-          </ol>
-        </div>
       </div>
       
       {cartItems.length === 0 ? (
@@ -393,29 +281,18 @@ function Cart({ user }) {
               <button 
                 className="btn btn-primary" 
                 onClick={handleBootpayPayment}
-                disabled={isOrdering || paymentServiceStatus !== 'available'}
+                disabled={isPaymentDisabled}
                 style={getPaymentButtonStyle()}
               >
-                💳 BootPay로 결제하기
-              </button>
-              <button 
-                className="btn btn-secondary" 
-                onClick={handleCircuitBreakerPayment}
-                disabled={isOrdering}
-                style={{ 
-                  background: '#6c757d',
-                  cursor: 'pointer'
-                }}
-              >
-                🛡️ Circuit Breaker 테스트
+                {isPaymentDisabled ? '🚫 결제 불가' : '💳 BootPay로 결제하기'}
               </button>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
               {paymentServiceStatus === 'unavailable' 
-                ? '🔥 결제 서비스 장애로 인해 결제가 일시 중단되었습니다' 
+                ? '🔥 결제 서비스 장애로 인해 모든 결제가 차단되었습니다' 
                 : paymentServiceStatus === 'unknown'
-                ? '🔄 결제 서비스 상태 확인 중...'
-                : 'BootPay: 카드결제 + 카카오페이 (실제 결제)'
+                ? '🔄 결제 서비스 상태 확인 중입니다...'
+                : ''
               }
             </p>
           </div>
