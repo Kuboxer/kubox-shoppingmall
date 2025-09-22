@@ -49,19 +49,19 @@ function Cart({ user }) {
     }
   };
 
-  // Payment Service 상태 확인 (강화된 장애 감지)
+  // Payment Service 상태 확인 (장애 감지 키워드 사용)
   const checkPaymentServiceStatus = async () => {
     const now = new Date().toLocaleTimeString();
     console.log(`[${now}] Payment Service 상태 확인 시작...`);
     
     try {
-      // 실제 결제 API로 테스트 요청
+      // 🔥 장애를 감지할 수 있는 테스트 요청
       const testPayload = {
         order_id: `STATUS_CHECK_${Date.now()}`,
         receipt_id: `STATUS_RECEIPT_${Date.now()}`,
         price: 1000,
         order_name: "서비스 상태 확인",
-        buyer_name: "SYSTEM_CHECK",
+        buyer_name: "FAILURE_USER", // ← 장애 트리거 키워드 사용
         method: "test"
       };
 
