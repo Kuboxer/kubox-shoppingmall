@@ -7,17 +7,13 @@ function Cart({ user }) {
   const [cartItems, setCartItems] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown');
+  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown'); // 추가
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchCartItems();
     fetchUserEmail();
-    checkPaymentServiceStatus();
-    
-    // 30초마다 자동으로 Payment Service 상태 확인
-    const interval = setInterval(checkPaymentServiceStatus, 30000);
-    return () => clearInterval(interval);
+    checkPaymentServiceStatus(); // 추가
   }, []);
 
   const fetchUserEmail = async () => {
@@ -208,6 +204,85 @@ function Cart({ user }) {
         >
           새로고침
         </button>
+      </div>
+      
+      {/* Circuit Breaker 동작 원리 섹션 추가 */}
+      <div style={{
+        background: '#f8f9fa',
+        border: '2px solid #e9ecef',
+        borderRadius: '10px',
+        padding: '20px',
+        marginBottom: '20px'
+      }}>
+        <h3 style={{ color: '#495057', marginBottom: '15px' }}>
+          🛡️ Circuit Breaker 동작 원리
+        </h3>
+        
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr', 
+          gap: '15px',
+          marginBottom: '20px' 
+        }}>
+          <div style={{
+            background: '#d4edda',
+            border: '1px solid #c3e6cb',
+            borderRadius: '8px',
+            padding: '15px'
+          }}>
+            <h4 style={{ color: '#155724', marginBottom: '10px' }}>
+              🚫 직접 호출 (보호 없음)
+            </h4>
+            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px' }}>
+              <li style={{ color: '#155724', marginBottom: '5px' }}>Frontend → Payment Service</li>
+              <li style={{ color: '#721c24', marginBottom: '5px' }}>❌ 장애 시 사용자에게 직접 노출</li>
+              <li style={{ color: '#721c24', marginBottom: '5px' }}>❌ 500 에러 그대로 표시</li>
+              <li style={{ color: '#721c24' }}>❌ 시스템 부하 가중</li>
+            </ul>
+          </div>
+          
+          <div style={{
+            background: '#fff3cd',
+            border: '1px solid #ffeaa7',
+            borderRadius: '8px',
+            padding: '15px'
+          }}>
+            <h4 style={{ color: '#856404', marginBottom: '10px' }}>
+              🛡️ CIRCUIT BREAKER (보호됨)
+            </h4>
+            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px' }}>
+              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ Frontend → Cart Service → Payment Service</li>
+              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ 장애 감지 시 즉시 차단</li>
+              <li style={{ color: '#155724', marginBottom: '5px' }}>✅ 503 응답으로 친화적 메시지</li>
+              <li style={{ color: '#155724' }}>✅ 시스템 보호 및 빠른 복구</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div style={{
+          background: '#e3f2fd',
+          border: '1px solid #bbdefb',
+          borderRadius: '8px',
+          padding: '15px'
+        }}>
+          <h4 style={{ color: '#0d47a1', marginBottom: '10px' }}>
+            🎯 시연 순서:
+          </h4>
+          <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#1565c0' }}>
+            <li style={{ marginBottom: '5px' }}>
+              <strong>장애 모드 ON</strong> → Payment Service 장애 상태 만들기
+            </li>
+            <li style={{ marginBottom: '5px' }}>
+              <strong>직접 호출 테스트</strong> → 500 에러 확인 (보호 없음)
+            </li>
+            <li style={{ marginBottom: '5px' }}>
+              <strong>Cart Service 테스트</strong> → 503 응답으로 보호됨 확인
+            </li>
+            <li>
+              <strong>ArgoCD 롤백</strong> → 이 패널 사라지고 즉시 복구
+            </li>
+          </ol>
+        </div>
       </div>
       
       {cartItems.length === 0 ? (
