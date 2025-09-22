@@ -7,13 +7,17 @@ function Cart({ user }) {
   const [cartItems, setCartItems] = useState([]);
   const [isOrdering, setIsOrdering] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown'); // 추가
+  const [paymentServiceStatus, setPaymentServiceStatus] = useState('unknown');
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchCartItems();
     fetchUserEmail();
-    checkPaymentServiceStatus(); // 추가
+    checkPaymentServiceStatus();
+    
+    // 10초마다 자동으로 Payment Service 상태 확인
+    const interval = setInterval(checkPaymentServiceStatus, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchUserEmail = async () => {
@@ -44,17 +48,42 @@ function Cart({ user }) {
     }
   };
 
-  // Payment Service 상태 확인
+  // Payment Service 상태 확인 (실제 결제 API 테스트)
   const checkPaymentServiceStatus = async () => {
     try {
-      const response = await fetch(`${API_ENDPOINTS.PAYMENT}/api/payment/health`);
+      console.log('Payment Service 상태 확인 중...');
+      
+      // 실제 결제 API로 테스트 요청 (가벼운 테스트)
+      const testPayload = {
+        order_id: `TEST_${Date.now()}`,
+        receipt_id: `TEST_RECEIPT_${Date.now()}`,
+        price: 1000,
+        order_name: "상태 확인 테스트",
+        buyer_name: "STATUS_CHECK", // 특별한 키워드
+        method: "test"
+      };
+
+      const response = await fetch(`${API_ENDPOINTS.PAYMENT}/api/payment/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Email': 'status-check@kubox.shop'
+        },
+        body: JSON.stringify(testPayload)
+      });
+
       if (response.ok) {
+        console.log('✅ Payment Service 정상');
         setPaymentServiceStatus('available');
-      } else {
+      } else if (response.status >= 500) {
+        console.log('❌ Payment Service 장애 감지');
         setPaymentServiceStatus('unavailable');
+      } else {
+        console.log('⚠️ Payment Service 응답 이상');
+        setPaymentServiceStatus('unknown');
       }
     } catch (error) {
-      console.error('Payment Service 상태 확인 실패:', error);
+      console.error('❌ Payment Service 연결 실패:', error);
       setPaymentServiceStatus('unavailable');
     }
   };
@@ -91,6 +120,11 @@ function Cart({ user }) {
     // Payment Service 상태 확인
     if (paymentServiceStatus === 'unavailable') {
       alert('⚠️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    if (paymentServiceStatus === 'unknown') {
+      alert('🔄 결제 서비스 상태를 확인 중입니다.\n잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -133,14 +167,20 @@ function Cart({ user }) {
 
       if (response.status === 503) {
         alert('🛡️ 결제 서비스가 일시적으로 사용할 수 없습니다.\n시스템이 안정화될 때까지 잠시 기다려주세요.');
+        // 상태 즉시 업데이트
+        setPaymentServiceStatus('unavailable');
       } else if (response.ok && result.status === 'success') {
         alert('🎉 결제가 완료되었습니다!');
         fetchCartItems(); // 장바구니 새로고침 (비워짐)
       } else {
         alert(`❌ 결제 실패: ${result.message || '알 수 없는 오류'}`);
+        // 결제 실패 시에도 상태 확인
+        setTimeout(checkPaymentServiceStatus, 1000);
       }
     } catch (error) {
       alert('❌ 결제 요청 중 오류가 발생했습니다.');
+      // 네트워크 오류 시에도 상태 확인
+      setTimeout(checkPaymentServiceStatus, 1000);
     } finally {
       setIsOrdering(false);
     }
@@ -149,9 +189,15 @@ function Cart({ user }) {
   const getPaymentButtonStyle = () => {
     if (paymentServiceStatus === 'unavailable') {
       return {
-        background: '#6c757d',
+        background: '#dc3545',
         cursor: 'not-allowed',
-        opacity: 0.6
+        opacity: 0.7
+      };
+    } else if (paymentServiceStatus === 'unknown') {
+      return {
+        background: '#ffc107',
+        cursor: 'not-allowed',
+        opacity: 0.7
       };
     }
     return {
@@ -165,9 +211,20 @@ function Cart({ user }) {
       case 'available':
         return '✅ 결제 서비스 정상';
       case 'unavailable':
-        return '⚠️ 결제 서비스 일시 중단';
+        return '🔥 결제 서비스 장애 감지 - Circuit Breaker 동작 중';
       default:
         return '🔄 결제 서비스 상태 확인 중...';
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (paymentServiceStatus) {
+      case 'available':
+        return { background: '#d4edda', border: '#c3e6cb' };
+      case 'unavailable':
+        return { background: '#f8d7da', border: '#f5c6cb' };
+      default:
+        return { background: '#fff3cd', border: '#ffeaa7' };
     }
   };
 
@@ -177,12 +234,10 @@ function Cart({ user }) {
       
       {/* 결제 서비스 상태 표시 */}
       <div style={{
-        background: paymentServiceStatus === 'available' ? '#d4edda' : 
-                   paymentServiceStatus === 'unavailable' ? '#f8d7da' : '#fff3cd',
-        border: `1px solid ${paymentServiceStatus === 'available' ? '#c3e6cb' : 
-                            paymentServiceStatus === 'unavailable' ? '#f5c6cb' : '#ffeaa7'}`,
-        padding: '10px',
-        borderRadius: '5px',
+        ...getStatusColor(),
+        border: `2px solid ${getStatusColor().border}`,
+        padding: '15px',
+        borderRadius: '8px',
         marginBottom: '20px',
         textAlign: 'center',
         fontSize: '14px',
@@ -193,20 +248,20 @@ function Cart({ user }) {
           onClick={checkPaymentServiceStatus}
           style={{ 
             marginLeft: '10px', 
-            padding: '2px 8px', 
+            padding: '5px 10px', 
             fontSize: '12px',
             border: 'none',
-            borderRadius: '3px',
+            borderRadius: '4px',
             background: '#17a2b8',
             color: 'white',
             cursor: 'pointer'
           }}
         >
-          새로고침
+          상태 새로고침
         </button>
       </div>
       
-      {/* Circuit Breaker 동작 원리 섹션 추가 */}
+      {/* Circuit Breaker 동작 원리 섹션 */}
       <div style={{
         background: '#f8f9fa',
         border: '2px solid #e9ecef',
@@ -273,13 +328,13 @@ function Cart({ user }) {
               <strong>장애 모드 ON</strong> → Payment Service 장애 상태 만들기
             </li>
             <li style={{ marginBottom: '5px' }}>
-              <strong>직접 호출 테스트</strong> → 500 에러 확인 (보호 없음)
+              <strong>상태 새로고침</strong> → 장애 감지 확인 (빨간색 표시)
             </li>
             <li style={{ marginBottom: '5px' }}>
-              <strong>Cart Service 테스트</strong> → 503 응답으로 보호됨 확인
+              <strong>결제 버튼 차단</strong> → 사용자 보호 확인
             </li>
             <li>
-              <strong>ArgoCD 롤백</strong> → 이 패널 사라지고 즉시 복구
+              <strong>ArgoCD 롤백</strong> → 즉시 복구
             </li>
           </ol>
         </div>
@@ -338,7 +393,7 @@ function Cart({ user }) {
               <button 
                 className="btn btn-primary" 
                 onClick={handleBootpayPayment}
-                disabled={isOrdering || paymentServiceStatus === 'unavailable'}
+                disabled={isOrdering || paymentServiceStatus !== 'available'}
                 style={getPaymentButtonStyle()}
               >
                 💳 BootPay로 결제하기
@@ -357,7 +412,9 @@ function Cart({ user }) {
             </div>
             <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
               {paymentServiceStatus === 'unavailable' 
-                ? '⚠️ 결제 서비스 복구 대기 중...' 
+                ? '🔥 결제 서비스 장애로 인해 결제가 일시 중단되었습니다' 
+                : paymentServiceStatus === 'unknown'
+                ? '🔄 결제 서비스 상태 확인 중...'
                 : 'BootPay: 카드결제 + 카카오페이 (실제 결제)'
               }
             </p>
