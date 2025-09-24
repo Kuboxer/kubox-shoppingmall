@@ -99,33 +99,33 @@ jobs:
           status: success
           custom_payload: |
             {
-              text: "✅ SonarQube Code Analysis Completed - Manual Approval Required",
-              attachments: [{
-                color: "warning",
-                fields: [{
-                  title: "Repository",
-                  value: "${{ github.repository }}",
-                  short: true
+              "text": "✅ SonarQube Code Analysis Completed - Manual Approval Required",
+              "attachments": [{
+                "color": "warning",
+                "fields": [{
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
                 }, {
-                  title: "Branch",
-                  value: "${{ github.ref_name }}",
-                  short: true
+                  "title": "Branch",
+                  "value": "${{ github.ref_name }}",
+                  "short": true
                 }, {
-                  title: "Commit",
-                  value: "${{ github.sha }}".substring(0, 7),
-                  short: true
+                  "title": "Commit",
+                  "value": "${{ github.sha }}",
+                  "short": true
                 }, {
-                  title: "Analysis Report",
-                  value: "${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall",
-                  short: false
+                  "title": "Analysis Report",
+                  "value": "${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall",
+                  "short": false
                 }, {
-                  title: "⚠️ Action Required",
-                  value: "Please review SonarQube results and manually approve deployment",
-                  short: false
+                  "title": "⚠️ Action Required",
+                  "value": "Please review SonarQube results and manually approve deployment",
+                  "short": false
                 }, {
-                  title: "Approval URL",
-                  value: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                  short: false
+                  "title": "Approval URL",
+                  "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  "short": false
                 }]
               }]
             }
@@ -137,9 +137,7 @@ jobs:
     name: 🔍 Manual Deployment Approval
     needs: sonarqube-analysis
     runs-on: ubuntu-latest
-    environment: 
-      name: production
-      url: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall
+    environment: production
     steps:
       - name: Display Approval Information
         run: |
@@ -164,29 +162,29 @@ jobs:
           status: success
           custom_payload: |
             {
-              text: "⏳ Deployment is waiting for manual approval",
-              attachments: [{
-                color: "#ff9500",
-                fields: [{
-                  title: "Repository",
-                  value: "${{ github.repository }}",
-                  short: true
+              "text": "⏳ Deployment is waiting for manual approval",
+              "attachments": [{
+                "color": "#ff9500",
+                "fields": [{
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
                 }, {
-                  title: "Workflow",
-                  value: "${{ github.workflow }}",
-                  short: true
+                  "title": "Workflow",
+                  "value": "${{ github.workflow }}",
+                  "short": true
                 }, {
-                  title: "Status",
-                  value: "🔍 SonarQube analysis completed successfully",
-                  short: false
+                  "title": "Status",
+                  "value": "🔍 SonarQube analysis completed successfully",
+                  "short": false
                 }, {
-                  title: "Waiting for",
-                  value: "Manual approval from: @IluvRiver, @JH2050, @choiyunha",
-                  short: false
+                  "title": "Waiting for",
+                  "value": "Manual approval from: @IluvRiver, @JH2050, @choiyunha",
+                  "short": false
                 }, {
-                  title: "Review & Approve",
-                  value: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                  short: false
+                  "title": "Review & Approve",
+                  "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  "short": false
                 }]
               }]
             }
@@ -209,21 +207,21 @@ jobs:
           status: success
           custom_payload: |
             {
-              text: "🚀 Deployment Approved - Starting Build Process",
-              attachments: [{
-                color: "good",
-                fields: [{
-                  title: "Repository",
-                  value: "${{ github.repository }}",
-                  short: true
+              "text": "🚀 Deployment Approved - Starting Build Process",
+              "attachments": [{
+                "color": "good",
+                "fields": [{
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
                 }, {
-                  title: "Branch",
-                  value: "${{ github.ref_name }}",
-                  short: true
+                  "title": "Branch",
+                  "value": "${{ github.ref_name }}",
+                  "short": true
                 }, {
-                  title: "Status",
-                  value: "✅ Manual approval received. Building Docker images...",
-                  short: false
+                  "title": "Status",
+                  "value": "✅ Manual approval received. Building Docker images...",
+                  "short": false
                 }]
               }]
             }
@@ -383,29 +381,29 @@ jobs:
           status: success
           custom_payload: |
             {
-              text: "🚀 Docker Images Successfully Pushed to ECR",
-              attachments: [{
-                color: "good",
-                fields: [{
-                  title: "Repository",
-                  value: "${{ github.repository }}",
-                  short: true
+              "text": "🚀 Docker Images Successfully Pushed to ECR",
+              "attachments": [{
+                "color": "good",
+                "fields": [{
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
                 }, {
-                  title: "Branch",
-                  value: "${{ github.ref_name }}",
-                  short: true
+                  "title": "Branch",
+                  "value": "${{ github.ref_name }}",
+                  "short": true
                 }, {
-                  title: "Built Services",
-                  value: "${{ env.build_services }}",
-                  short: false
+                  "title": "Built Services",
+                  "value": "${{ env.build_services }}",
+                  "short": false
                 }, {
-                  title: "Updated Images",
-                  value: "${{ env.built_services }}",
-                  short: false
+                  "title": "Updated Images",
+                  "value": "${{ env.built_services }}",
+                  "short": false
                 }, {
-                  title: "ECR Repository",
-                  value: "${{ steps.login-ecr.outputs.registry }}/kubox",
-                  short: false
+                  "title": "ECR Repository",
+                  "value": "${{ steps.login-ecr.outputs.registry }}/kubox",
+                  "short": false
                 }]
               }]
             }
