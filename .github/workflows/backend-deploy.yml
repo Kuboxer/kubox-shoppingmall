@@ -1,4 +1,4 @@
-name: Backend MSA Deploy with Strict Manual Approval
+name: Backend MSA Deploy with Smart Detection
 
 on:
   workflow_dispatch:
@@ -92,47 +92,58 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
-      - name: Notify SonarQube Completion and Request Approval
+      - name: 📊 Notify SonarQube Analysis Complete
         if: success()
         uses: 8398a7/action-slack@v3
         with:
-          status: success
+          status: custom
           custom_payload: |
             {
-              "text": "✅ SonarQube Code Analysis Completed - Manual Approval Required",
+              "text": "",
               "attachments": [{
-                "color": "warning",
-                "fields": [{
-                  "title": "Repository",
-                  "value": "${{ github.repository }}",
-                  "short": true
-                }, {
-                  "title": "Branch",
-                  "value": "${{ github.ref_name }}",
-                  "short": true
-                }, {
-                  "title": "Commit",
-                  "value": "${{ github.sha }}",
-                  "short": true
-                }, {
-                  "title": "Analysis Report",
-                  "value": "Check SonarQube Dashboard for detailed results",
-                  "short": false
-                }, {
-                  "title": "⚠️ Action Required",
-                  "value": "Please review SonarQube results and manually approve deployment",
-                  "short": false
-                }, {
-                  "title": "Approval URL",
-                  "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                  "short": false
-                }]
+                "color": "#36a64f",
+                "title": "🔍 SonarQube Code Analysis Completed",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch", 
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "`${{ github.sha }}`".substring(0, 10),
+                    "short": true
+                  },
+                  {
+                    "title": "Triggered by",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "📋 Analysis Summary",
+                    "value": "✅ Code quality analysis has been completed successfully\n📊 Check SonarQube dashboard for detailed results\n⏳ Manual approval required to proceed with deployment",
+                    "short": false
+                  },
+                  {
+                    "title": "🔗 Actions",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow> • <${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall|SonarQube Dashboard>",
+                    "short": false
+                  }
+                ],
+                "footer": "SonarQube Analysis",
+                "footer_icon": "https://docs.sonarqube.org/latest/images/favicon.ico",
+                "ts": $(date +%s)
               }]
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-  # 수동 승인 단계 - 더 엄격한 설정
+  # 수동 승인 단계 
   manual-approval:
     name: 🔍 Manual Deployment Approval
     needs: sonarqube-analysis
@@ -149,43 +160,58 @@ jobs:
           echo ""
           echo "📋 Before approving, please verify:"
           echo "  ✅ Quality Gate Status: PASSED"
-          echo "  ✅ No Critical/Major Security Issues"
+          echo "  ✅ No Critical/Major Security Issues" 
           echo "  ✅ Code Coverage meets requirements"
           echo "  ✅ No Duplicated Code violations"
           echo "  ✅ Technical Debt ratio is acceptable"
           echo ""
           echo "🚀 Ready to proceed with deployment!"
 
-      - name: Wait for Approval
+      - name: ⏳ Notify Approval Required
         uses: 8398a7/action-slack@v3
         with:
-          status: success
+          status: custom
           custom_payload: |
             {
-              "text": "⏳ Deployment is waiting for manual approval",
+              "text": "",
               "attachments": [{
-                "color": "#ff9500",
-                "fields": [{
-                  "title": "Repository",
-                  "value": "${{ github.repository }}",
-                  "short": true
-                }, {
-                  "title": "Workflow",
-                  "value": "${{ github.workflow }}",
-                  "short": true
-                }, {
-                  "title": "Status",
-                  "value": "🔍 SonarQube analysis completed successfully",
-                  "short": false
-                }, {
-                  "title": "Waiting for",
-                  "value": "Manual approval from: @IluvRiver, @JH2050, @choiyunha",
-                  "short": false
-                }, {
-                  "title": "Review & Approve",
-                  "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                  "short": false
-                }]
+                "color": "#ff9500", 
+                "title": "⏳ Manual Approval Required for Deployment",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Workflow",
+                    "value": "${{ github.workflow }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "🔍 SonarQube analysis completed - Waiting for approval",
+                    "short": false
+                  },
+                  {
+                    "title": "👥 Reviewers",
+                    "value": "@IluvRiver @JH2050 @choiyunha",
+                    "short": false
+                  },
+                  {
+                    "title": "📋 Approval Checklist", 
+                    "value": "• Quality Gate: PASSED\n• No Critical Security Issues\n• Code Coverage meets requirements\n• Technical Debt is acceptable",
+                    "short": false
+                  },
+                  {
+                    "title": "🔗 Review & Approve",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Click here to review and approve>",
+                    "short": false
+                  }
+                ],
+                "footer": "GitHub Actions - Manual Approval",
+                "footer_icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                "ts": $(date +%s)
               }]
             }
         env:
@@ -201,28 +227,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Notify Deployment Started
+      - name: 🚀 Notify Deployment Started
         uses: 8398a7/action-slack@v3
         with:
-          status: success
+          status: custom
           custom_payload: |
             {
-              "text": "🚀 Deployment Approved - Starting Build Process",
+              "text": "",
               "attachments": [{
-                "color": "good",
-                "fields": [{
-                  "title": "Repository",
-                  "value": "${{ github.repository }}",
-                  "short": true
-                }, {
-                  "title": "Branch",
-                  "value": "${{ github.ref_name }}",
-                  "short": true
-                }, {
-                  "title": "Status",
-                  "value": "✅ Manual approval received. Building Docker images...",
-                  "short": false
-                }]
+                "color": "#36a64f",
+                "title": "🚀 Deployment Approved - Starting Build Process",
+                "fields": [
+                  {
+                    "title": "Repository", 
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "✅ Manual approval received\n🏗️ Starting Docker image build process...",
+                    "short": false
+                  }
+                ],
+                "footer": "GitHub Actions - Build Started", 
+                "footer_icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                "ts": $(date +%s)
               }]
             }
         env:
@@ -242,113 +276,104 @@ jobs:
         with:
           mask-password: true
         
-      - name: Detect services to build
+      - name: 🔍 Detect Changed Services Only
+        id: detect-services
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           ALL_SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
           BUILD_SERVICES=""
           
-          # ECR에 이미지가 하나라도 있는지 확인
-          TOTAL_IMAGES=$(aws ecr describe-images \
-            --repository-name kubox \
-            --query "length(imageDetails)" \
-            --output text 2>/dev/null || echo "0")
-          
-          echo "Total images in ECR: $TOTAL_IMAGES"
-          
-          # 항상 변경 감지 로직 실행 (ECR 이미지 존재 여부와 관계없이)
-          echo "🔍 Analyzing changed files to detect which services need rebuilding..."
+          echo "🔍 Smart Detection: Analyzing changed files to build ONLY modified services"
+          echo ""
           
           # 안전한 변경 파일 감지
           CHANGED_FILES=""
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Push 이벤트의 경우 이전 커밋과 비교
             if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-              echo "✅ Previous commit found, checking diff..."
               CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+              echo "📋 Comparing with previous commit (HEAD~1)"
             else
-              echo "⚠️  No previous commit found (first commit). Building all services."
+              echo "⚠️  First commit detected - will build all services"
               BUILD_SERVICES="${ALL_SERVICES[@]}"
             fi
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # 수동 실행의 경우 최근 커밋 변경사항 확인
-            echo "🔧 Manual workflow dispatch. Checking recent changes..."
             if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
               CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+              echo "📋 Manual trigger - checking recent commit changes"
             else
               CHANGED_FILES=$(git show --name-only --format="" HEAD)
+              echo "📋 Manual trigger - analyzing current commit"
             fi
-          else
-            echo "📝 Other event type. Checking recent commit changes..."
-            CHANGED_FILES=$(git show --name-only --format="" HEAD)
           fi
           
-          # 변경된 파일이 있으면 해당 서비스만 찾기
+          # 변경된 파일이 있으면 해당 서비스만 정확히 찾기
           if [ -n "$CHANGED_FILES" ] && [ -z "$BUILD_SERVICES" ]; then
-            echo "📋 Changed files:"
+            echo "📄 Changed files:"
             echo "$CHANGED_FILES"
             echo ""
             
-            # workflow 파일 자체가 변경된 경우
-            if echo "$CHANGED_FILES" | grep -q ".github/workflows/backend-deploy.yml"; then
-              echo "🔄 Workflow file changed. This might affect all services."
-              echo "💡 However, checking for specific backend service changes..."
-            fi
-            
-            # 각 서비스별로 변경 확인
+            # 각 서비스별로 정확한 경로 매칭
             for SERVICE in "${ALL_SERVICES[@]}"; do
-              if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
-                echo "✅ Changes detected in $SERVICE"
+              if echo "$CHANGED_FILES" | grep -q "^backend/$SERVICE/"; then
+                echo "✅ Changes detected in: $SERVICE"
                 BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
+              else
+                echo "⚪ No changes in: $SERVICE"
               fi
             done
             
             BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
             
-            # 백엔드 공통 파일이나 루트 레벨 변경이 있는지 확인
-            if echo "$CHANGED_FILES" | grep -E "^backend/(build\.gradle|settings\.gradle|gradle|docker-compose)" >/dev/null; then
-              echo "🔧 Backend common files changed. This might affect all services."
-              echo "💡 But building only services with direct changes: $BUILD_SERVICES"
-            fi
-            
-            # 변경된 백엔드 파일이 있지만 특정 서비스에 매칭되지 않는 경우
-            if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
-              echo "🤔 Backend changes detected but no specific service directory matched."
-              echo "📋 Changed backend files:"
-              echo "$CHANGED_FILES" | grep "^backend/" || echo "None"
-              echo ""
-              echo "🚀 Building all services to be safe."
-              BUILD_SERVICES="${ALL_SERVICES[@]}"
-            fi
-            
             # 백엔드와 무관한 변경사항만 있는 경우
-            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/"; then
-              echo "ℹ️  No backend-related changes detected."
-              echo "📋 Changed files are:"
-              echo "$CHANGED_FILES"
-              echo "⏭️  Skipping backend build."
+            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/.*\.java\|^backend/.*/Dockerfile\|^backend/.*/build\.gradle"; then
+              echo ""
+              echo "ℹ️  No backend service code changes detected"
+              echo "📋 Changed files appear to be:"
+              echo "$CHANGED_FILES" | grep -E "(\.md$|\.yml$|^\.github|^frontend|^docs)" || echo "Non-service backend files"
+              echo ""
+              echo "⏭️  Skipping Docker build - no service changes found"
+              echo "build_services=" >> $GITHUB_ENV
+              echo "skip_build=true" >> $GITHUB_ENV
+              exit 0
+            fi
+            
+            # 백엔드 변경이 있지만 특정 서비스 디렉토리가 아닌 경우 (공통 파일 등)
+            if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              echo ""
+              echo "🤔 Backend changes detected but not in specific service directories"
+              echo "📋 Changed backend files:"
+              echo "$CHANGED_FILES" | grep "^backend/"
+              echo ""
+              echo "🛡️  Building all services for safety (common files may affect all)"
+              BUILD_SERVICES="${ALL_SERVICES[@]}"
             fi
           fi
           
           if [ -z "$BUILD_SERVICES" ]; then
             echo ""
-            echo "🎯 Result: No services need to be built."
+            echo "🎯 Result: No services need building"
             echo "build_services=" >> $GITHUB_ENV
+            echo "skip_build=true" >> $GITHUB_ENV
             exit 0
           fi
           
           echo ""
-          echo "🎯 Final decision: Building the following services:"
+          echo "🎯 FINAL DECISION: Building these services only:"
           for SERVICE in $BUILD_SERVICES; do
-            echo "  📦 $SERVICE"
+            echo "  🔨 $SERVICE"
           done
           echo ""
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
+          echo "skip_build=false" >> $GITHUB_ENV
+          
+          # Slack 알림을 위한 서비스 목록 포맷팅
+          FORMATTED_SERVICES=$(echo $BUILD_SERVICES | sed 's/ /, /g')
+          echo "formatted_services=$FORMATTED_SERVICES" >> $GITHUB_ENV
           
       - name: Build services
         id: build-services
-        if: env.build_services != ''
+        if: env.skip_build != 'true' && env.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
@@ -359,11 +384,13 @@ jobs:
           # 빌드된 서비스와 버전을 저장할 배열
           BUILT_SERVICES=""
           
+          echo "🏗️ Starting Docker build process for selected services..."
+          echo ""
+          
           for SERVICE in ${{ env.build_services }}; do
-            echo "=== Processing $SERVICE ==="
+            echo "==================== $SERVICE ===================="
             
             # 현재 서비스의 기존 버전 확인
-            echo "Checking existing versions for $SERVICE..."
             EXISTING_VERSIONS=$(aws ecr describe-images \
               --repository-name kubox \
               --query "imageDetails[].imageTags[]" \
@@ -375,12 +402,11 @@ jobs:
             
             if [ -z "$EXISTING_VERSIONS" ]; then
               NEXT_VERSION=1
-              echo "🆕 No existing versions found. Creating first version: v1"
+              echo "🆕 First version for $SERVICE: v1"
             else
-              echo "📋 Existing versions: $(echo $EXISTING_VERSIONS | tr '\n' ' ')"
               LATEST_VERSION=$(echo "$EXISTING_VERSIONS" | tail -1)
               NEXT_VERSION=$((LATEST_VERSION + 1))
-              echo "📈 Latest version: v$LATEST_VERSION -> Next version: v$NEXT_VERSION"
+              echo "📈 $SERVICE: v$LATEST_VERSION → v$NEXT_VERSION"
             fi
             
             # 최종 태그들
@@ -393,88 +419,133 @@ jobs:
             VERSION_URI="$ECR_REGISTRY/kubox:$VERSION_TAG"
             LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
             
-            echo "🏗️  Building $SERVICE as $VERSION_TAG"
+            echo "🏗️  Building: $VERSION_TAG"
             
             # 도커 빌드 (VERSION 인자 전달)
             cd backend/$SERVICE
             
             if docker build --build-arg VERSION="$VERSION_TAG" -t "$TEMP_TAG" .; then
-              echo "✅ Build successful"
+              echo "✅ Build successful: $SERVICE"
               
               # 버전 태그 적용 및 푸시
               docker tag "$TEMP_TAG" "$VERSION_URI"
               if docker push "$VERSION_URI"; then
-                echo "✅ Successfully pushed $VERSION_TAG"
+                echo "✅ Pushed: $VERSION_TAG"
                 
                 # latest 태그 적용 및 푸시
                 docker tag "$TEMP_TAG" "$LATEST_URI"
                 docker push "$LATEST_URI"
-                echo "✅ Updated $LATEST_TAG tag"
+                echo "✅ Updated: $LATEST_TAG"
                 
                 # 빌드 성공한 서비스 기록
                 BUILT_SERVICES="$BUILT_SERVICES $SERVICE:$VERSION_TAG"
                 
-                # 결과 확인
-                echo "🎯 $SERVICE is now available as:"
-                echo "   📦 $VERSION_TAG"
-                echo "   🏷️  $LATEST_TAG"
-                
               else
-                echo "❌ Failed to push $VERSION_TAG"
+                echo "❌ Failed to push: $VERSION_TAG"
               fi
               
               # 임시 태그 정리
               docker rmi "$TEMP_TAG" 2>/dev/null || true
               
             else
-              echo "❌ Build failed for $SERVICE"
+              echo "❌ Build failed: $SERVICE"
             fi
             
             cd ../..
-            echo "---"
+            echo ""
           done
 
           # 빌드 결과를 환경변수로 저장
           echo "built_services=$BUILT_SERVICES" >> $GITHUB_ENV
+          
+          # Slack 알림용 포맷팅
+          FORMATTED_BUILT=$(echo $BUILT_SERVICES | sed 's/ /\\n• /g' | sed 's/:/: /g')
+          echo "formatted_built_services=$FORMATTED_BUILT" >> $GITHUB_ENV
 
-      - name: Notify ECR Push Completion
-        if: success() && env.built_services != ''
+      - name: 🚀 Notify Build Complete
+        if: success() && env.skip_build != 'true' && env.built_services != ''
         uses: 8398a7/action-slack@v3
         with:
-          status: success
+          status: custom
           custom_payload: |
             {
-              "text": "🚀 Docker Images Successfully Pushed to ECR",
+              "text": "",
               "attachments": [{
-                "color": "good",
-                "fields": [{
-                  "title": "Repository",
-                  "value": "${{ github.repository }}",
-                  "short": true
-                }, {
-                  "title": "Branch",
-                  "value": "${{ github.ref_name }}",
-                  "short": true
-                }, {
-                  "title": "Built Services",
-                  "value": "${{ env.build_services }}",
-                  "short": false
-                }, {
-                  "title": "Updated Images",
-                  "value": "${{ env.built_services }}",
-                  "short": false
-                }, {
-                  "title": "ECR Repository",
-                  "value": "${{ steps.login-ecr.outputs.registry }}/kubox",
-                  "short": false
-                }]
+                "color": "#36a64f",
+                "title": "🚀 Docker Images Successfully Built and Pushed to ECR",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "🎯 Built Services",
+                    "value": "${{ env.formatted_services }}",
+                    "short": false
+                  },
+                  {
+                    "title": "📦 New Image Tags",
+                    "value": "• ${{ env.formatted_built_services }}",
+                    "short": false
+                  },
+                  {
+                    "title": "🏪 ECR Repository",
+                    "value": "`${{ steps.login-ecr.outputs.registry }}/kubox`",
+                    "short": false
+                  }
+                ],
+                "footer": "AWS ECR - Image Push Complete",
+                "footer_icon": "https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png",
+                "ts": $(date +%s)
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: ℹ️  Notify No Changes
+        if: env.skip_build == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "",
+              "attachments": [{
+                "color": "#36a64f",
+                "title": "ℹ️ No Docker Build Required",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch", 
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "📋 Analysis Result",
+                    "value": "✅ SonarQube analysis completed\n⚪ No backend service code changes detected\n⏭️ Skipping Docker image build",
+                    "short": false
+                  }
+                ],
+                "footer": "Smart Build Detection",
+                "footer_icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                "ts": $(date +%s)
               }]
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           
       - name: Update Helm Chart
-        if: env.built_services != ''
+        if: env.skip_build != 'true' && env.built_services != ''
         run: |
           echo "🔄 Updating Helm Chart with new image tags..."
           
@@ -482,23 +553,17 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 토큰 확인 및 디버깅
+          # 토큰 확인
           if [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
-            echo "❌ HELM_REPO_TOKEN is not set"
-            exit 1
+            echo "❌ HELM_REPO_TOKEN is not set - skipping helm chart update"
+            exit 0
           fi
           
-          echo "✅ HELM_REPO_TOKEN is available"
-          echo "🔍 Attempting to clone kubox-helm-chart repository..."
-          
-          # Helm Chart 저장소 클론 (상세한 에러 정보 포함)
+          # Helm Chart 저장소 클론
           if git clone https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git helm-repo; then
             echo "✅ Successfully cloned helm chart repository"
           else
-            echo "❌ Failed to clone helm chart repository"
-            echo "🔍 Checking if repository exists..."
-            curl -s -H "Authorization: token ${{ secrets.HELM_REPO_TOKEN }}" https://api.github.com/repos/Kuboxer/kubox-helm-chart || echo "Repository check failed"
-            echo "⚠️  Skipping helm chart update due to clone failure"
+            echo "❌ Failed to clone helm chart repository - skipping update"
             exit 0
           fi
           
@@ -541,47 +606,69 @@ jobs:
             esac
           done
           
-          # 변경사항 확인
-          echo "📋 Changes made:"
-          git diff
-          
-          # 변경사항이 있으면 커밋 & 푸시 (토큰 사용 시도, 실패하면 스킵)
+          # 변경사항 커밋 & 푸시
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Update image tags: ${{ env.built_services }}"
-            if [ -n "${{ secrets.HELM_REPO_TOKEN }}" ]; then
-              git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main && echo "✅ Helm chart updated successfully" || echo "⚠️  Failed to push helm chart changes"
-            else
-              echo "⚠️  HELM_REPO_TOKEN not found. Skipping helm chart push."
-            fi
+            git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main && echo "✅ Helm chart updated successfully" || echo "⚠️  Failed to push helm chart changes"
           else
             echo "ℹ️  No changes to commit"
           fi
 
-  # 전체 워크플로우 결과 알림
-  notification:
-    name: 📊 Final Notification
+  # 최종 알림 - 기본 알림 대신 맞춤형 알림
+  final-notification:
+    name: 📊 Final Status
     runs-on: ubuntu-latest
     if: ${{ always() }}
     needs: [sonarqube-analysis, manual-approval, build-and-deploy]
     steps:
-      - name: Get workflow status
-        id: check
-        run: |
-          if [ "${{ needs.sonarqube-analysis.result }}" == "success" ] && [ "${{ needs.manual-approval.result }}" == "success" ] && [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.sonarqube-analysis.result }}" == "cancelled" ] || [ "${{ needs.manual-approval.result }}" == "cancelled" ] || [ "${{ needs.build-and-deploy.result }}" == "cancelled" ]; then
-            echo "status=cancelled" >> $GITHUB_OUTPUT
-          else
-            echo "status=failure" >> $GITHUB_OUTPUT
-          fi
-          
-      - name: Final Workflow Notification
+      - name: 🎉 Notify Workflow Complete
         uses: 8398a7/action-slack@v3
         with:
-          status: ${{ steps.check.outputs.status }}
-          author_name: Github Action Bot
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+          status: custom
+          custom_payload: |
+            {
+              "text": "",
+              "attachments": [{
+                "color": "${{ needs.build-and-deploy.result == 'success' && '#36a64f' || (needs.build-and-deploy.result == 'cancelled' && '#ff9500' || '#d73a49') }}",
+                "title": "${{ needs.build-and-deploy.result == 'success' && '🎉 Deployment Workflow Completed Successfully' || (needs.build-and-deploy.result == 'cancelled' && '🛑 Deployment Workflow Cancelled' || '❌ Deployment Workflow Failed') }}",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Triggered by",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "`${{ github.sha }}`".substring(0, 10),
+                    "short": true
+                  },
+                  {
+                    "title": "📊 Workflow Summary",
+                    "value": "• SonarQube Analysis: ${{ needs.sonarqube-analysis.result == 'success' && '✅ Success' || '❌ Failed' }}\n• Manual Approval: ${{ needs.manual-approval.result == 'success' && '✅ Approved' || (needs.manual-approval.result == 'cancelled' && '🛑 Cancelled' || '❌ Failed') }}\n• Build & Deploy: ${{ needs.build-and-deploy.result == 'success' && '✅ Success' || (needs.build-and-deploy.result == 'cancelled' && '🛑 Cancelled' || '❌ Failed') }}",
+                    "short": false
+                  },
+                  {
+                    "title": "🔗 View Details",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|GitHub Actions Workflow>",
+                    "short": false
+                  }
+                ],
+                "footer": "GitHub Actions - Workflow Complete",
+                "footer_icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                "ts": $(date +%s)
+              }]
+            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         if: always()
