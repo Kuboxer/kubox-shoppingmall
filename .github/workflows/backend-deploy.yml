@@ -100,38 +100,41 @@ jobs:
           custom_payload: |
             {
               "text": "",
-              "attachments": [{
-                "color": "#36a64f",
-                "title": "🔍 SonarQube Code Analysis Completed",
-                "fields": [
-                  {
-                    "title": "Repository",
-                    "value": "${{ github.repository }}",
-                    "short": true
-                  },
-                  {
-                    "title": "Branch",
-                    "value": "${{ github.ref_name }}",
-                    "short": true
-                  },
-                  {
-                    "title": "Commit",
-                    "value": "`${{ env.SHORT_SHA }}`",
-                    "short": true
-                  },
-                  {
-                    "title": "Triggered by",
-                    "value": "${{ github.actor }}",
-                    "short": true
-                  }
-                ],
-                "footer": "SonarQube Analysis",
-                "footer_icon": "https://docs.sonarqube.org/latest/images/favicon.ico",
-                "ts": ${{ env.TIMESTAMP }}
-              }]
+              "attachments": [
+                {
+                  "color": "#36a64f",
+                  "title": "🔍 SonarQube Code Analysis Completed",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Branch",
+                      "value": "${{ github.ref_name }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "`${{ env.SHORT_SHA }}`",
+                      "short": true
+                    },
+                    {
+                      "title": "Triggered by",
+                      "value": "${{ github.actor }}",
+                      "short": true
+                    }
+                  ],
+                  "footer": "SonarQube Analysis",
+                  "footer_icon": "https://docs.sonarqube.org/latest/images/favicon.ico",
+                  "ts": "${{ env.TIMESTAMP }}"
+                }
+              ]
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
 
   # 수동 승인 단계 
   manual-approval:
