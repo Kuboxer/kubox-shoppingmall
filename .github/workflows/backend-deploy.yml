@@ -176,6 +176,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🚀 Deployment Approved
         uses: 8398a7/action-slack@v3
@@ -243,7 +245,8 @@ jobs:
             echo "📋 Images exist in ECR ($TOTAL_IMAGES images). ONLY building changed services."
             
             # backend 디렉토리 내에서만 변경 감지
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- 'backend/')
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- 'backend/' 2>/dev/null \
+              || git diff --name-only HEAD^ HEAD -- 'backend/')
             
             if [ -z "$CHANGED_FILES" ]; then
               echo "ℹ️ No backend changes detected - skipping build"
