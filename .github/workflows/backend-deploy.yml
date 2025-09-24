@@ -1,4 +1,4 @@
-name: Backend MSA Deploy
+name: Backend MSA Deploy with Strict Manual Approval
 
 on:
   workflow_dispatch:
@@ -9,8 +9,10 @@ on:
       - '.github/workflows/backend-deploy.yml'
 
 jobs:
-  build:
+  sonarqube-analysis:
     runs-on: ubuntu-latest
+    outputs:
+      analysis-result: ${{ steps.sonarqube-scan.outcome }}
     
     steps:
       - name: Checkout
@@ -90,16 +92,16 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
-      - name: Notify SonarQube Completion
+      - name: Notify SonarQube Completion and Request Approval
         if: success()
         uses: 8398a7/action-slack@v3
         with:
           status: success
           custom_payload: |
             {
-              text: "✅ SonarQube Code Analysis Completed",
+              text: "✅ SonarQube Code Analysis Completed - Manual Approval Required",
               attachments: [{
-                color: "good",
+                color: "warning",
                 fields: [{
                   title: "Repository",
                   value: "${{ github.repository }}",
@@ -115,6 +117,112 @@ jobs:
                 }, {
                   title: "Analysis Report",
                   value: "${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall",
+                  short: false
+                }, {
+                  title: "⚠️ Action Required",
+                  value: "Please review SonarQube results and manually approve deployment",
+                  short: false
+                }, {
+                  title: "Approval URL",
+                  value: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 수동 승인 단계 - 더 엄격한 설정
+  manual-approval:
+    name: 🔍 Manual Deployment Approval
+    needs: sonarqube-analysis
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall
+    steps:
+      - name: Display Approval Information
+        run: |
+          echo "🔍 Code Quality Analysis Complete!"
+          echo "📊 SonarQube Report: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall"
+          echo ""
+          echo "⏳ This deployment requires manual approval."
+          echo "👥 Approved reviewers: IluvRiver, JH2050, choiyunha"
+          echo ""
+          echo "📋 Before approving, please verify:"
+          echo "  ✅ Quality Gate Status: PASSED"
+          echo "  ✅ No Critical/Major Security Issues"
+          echo "  ✅ Code Coverage meets requirements"
+          echo "  ✅ No Duplicated Code violations"
+          echo "  ✅ Technical Debt ratio is acceptable"
+          echo ""
+          echo "🚀 Ready to proceed with deployment!"
+
+      - name: Wait for Approval
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          custom_payload: |
+            {
+              text: "⏳ Deployment is waiting for manual approval",
+              attachments: [{
+                color: "#ff9500",
+                fields: [{
+                  title: "Repository",
+                  value: "${{ github.repository }}",
+                  short: true
+                }, {
+                  title: "Workflow",
+                  value: "${{ github.workflow }}",
+                  short: true
+                }, {
+                  title: "Status",
+                  value: "🔍 SonarQube analysis completed successfully",
+                  short: false
+                }, {
+                  title: "Waiting for",
+                  value: "Manual approval from: @IluvRiver, @JH2050, @choiyunha",
+                  short: false
+                }, {
+                  title: "Review & Approve",
+                  value: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 승인 후 빌드 및 배포
+  build-and-deploy:
+    name: 🚀 Build and Deploy
+    needs: [sonarqube-analysis, manual-approval]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify Deployment Started
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          custom_payload: |
+            {
+              text: "🚀 Deployment Approved - Starting Build Process",
+              attachments: [{
+                color: "good",
+                fields: [{
+                  title: "Repository",
+                  value: "${{ github.repository }}",
+                  short: true
+                }, {
+                  title: "Branch",
+                  value: "${{ github.ref_name }}",
+                  short: true
+                }, {
+                  title: "Status",
+                  value: "✅ Manual approval received. Building Docker images...",
                   short: false
                 }]
               }]
@@ -357,26 +465,13 @@ jobs:
           else
             echo "ℹ️  No changes to commit"
           fi
-          
-      - name: Summary
-        run: |
-          echo ""
-          echo "🎉 Deployment Summary:"
-          echo "✅ Built services: ${{ env.build_services }}"
-          echo "📦 Updated images: ${{ env.built_services }}"
-          echo "🔍 SonarQube analysis completed"
-          echo "📋 Build logic:"
-          echo "   - No images in ECR: Build ALL services as v1"
-          echo "   - Images exist: Build only CHANGED services"
-          echo "   - Latest tag always points to newest version"
-          echo "   - Helm chart automatically updated"
 
   # 전체 워크플로우 결과 알림
   notification:
-    name: Notification
+    name: 📊 Final Notification
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [build]
+    needs: [sonarqube-analysis, manual-approval, build-and-deploy]
     steps:
       - uses: martialonline/workflow-status@v3
         id: check
