@@ -261,29 +261,63 @@ jobs:
             echo "🆕 No images found in ECR. Building ALL services for first time."
             BUILD_SERVICES="${ALL_SERVICES[@]}"
           else
-            echo "📋 Images exist. Checking for changed services only."
+            echo "📋 Images exist. Checking for changed services..."
             
-            # 변경된 파일 확인
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-            echo "Changed files:"
-            echo "$CHANGED_FILES"
-            
-            # 변경된 서비스 찾기
-            for SERVICE in "${ALL_SERVICES[@]}"; do
-              if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
-                BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
+            # 안전한 변경 파일 감지
+            CHANGED_FILES=""
+            if [ "${{ github.event_name }}" = "push" ]; then
+              # Push 이벤트의 경우 이전 커밋과 비교
+              if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                echo "✅ Previous commit found, checking diff..."
+                CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+              else
+                echo "⚠️  No previous commit found (first commit?). Building all services."
+                BUILD_SERVICES="${ALL_SERVICES[@]}"
               fi
-            done
+            elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              # 수동 실행의 경우 최근 커밋 변경사항 확인
+              echo "🔧 Manual workflow dispatch. Checking recent changes..."
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format="" HEAD)
+            else
+              echo "📝 Other event type. Building all services."
+              BUILD_SERVICES="${ALL_SERVICES[@]}"
+            fi
             
-            BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
+            # 변경된 파일이 있으면 해당 서비스 찾기
+            if [ -n "$CHANGED_FILES" ] && [ -z "$BUILD_SERVICES" ]; then
+              echo "Changed files:"
+              echo "$CHANGED_FILES"
+              
+              # 변경된 서비스 찾기
+              for SERVICE in "${ALL_SERVICES[@]}"; do
+                if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
+                  BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
+                fi
+              done
+              
+              # workflow 파일이 변경된 경우 모든 서비스 빌드
+              if echo "$CHANGED_FILES" | grep -q ".github/workflows/backend-deploy.yml"; then
+                echo "🔄 Workflow file changed. Building all services."
+                BUILD_SERVICES="${ALL_SERVICES[@]}"
+              fi
+              
+              BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
+              
+              # 변경된 백엔드 파일이 없으면 워크플로우 파일 변경만 있는 경우 체크
+              if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "backend/"; then
+                echo "🔍 Backend changes detected but no specific service matched. Building all services."
+                BUILD_SERVICES="${ALL_SERVICES[@]}"
+              fi
+            fi
           fi
           
           if [ -z "$BUILD_SERVICES" ]; then
-            echo "No services to build. Exiting."
+            echo "ℹ️  No services to build. Exiting gracefully."
+            echo "build_services=" >> $GITHUB_ENV
             exit 0
           fi
           
-          echo "Services to build: $BUILD_SERVICES"
+          echo "🚀 Services to build: $BUILD_SERVICES"
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
           
       - name: Build services
