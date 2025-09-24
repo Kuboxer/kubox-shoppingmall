@@ -242,18 +242,19 @@ jobs:
           else
             echo "📋 Images exist in ECR ($TOTAL_IMAGES images). ONLY building changed services."
             
-            # 간단하고 확실한 변경 감지
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format="" HEAD 2>/dev/null)
+            # backend 디렉토리 내에서만 변경 감지
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- 'backend/')
             
             if [ -z "$CHANGED_FILES" ]; then
-              echo "⚠️ Cannot detect changes - building ALL services"
-              BUILD_SERVICES="${ALL_SERVICES[@]}"
+              echo "ℹ️ No backend changes detected - skipping build"
+              echo "build_services=" >> $GITHUB_ENV
+              echo "skip_build=true" >> $GITHUB_ENV
+              exit 0
             else
               echo "📄 Changed files: $(echo "$CHANGED_FILES" | wc -l)"
               echo "$CHANGED_FILES"
               echo ""
               
-              # 오직 서비스 디렉토리에서 변경된 것만 빌드
               for SERVICE in "${ALL_SERVICES[@]}"; do
                 if echo "$CHANGED_FILES" | grep -q "^backend/$SERVICE/"; then
                   echo "✅ BUILD: $SERVICE"
@@ -265,7 +266,6 @@ jobs:
               
               BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
               
-              # 변경된 서비스가 없으면 빌드 스킵
               if [ -z "$BUILD_SERVICES" ]; then
                 echo "ℹ️ No service changes detected - SKIPPING BUILD"
                 echo "build_services=" >> $GITHUB_ENV
@@ -273,13 +273,6 @@ jobs:
                 exit 0
               fi
             fi
-          fi
-          
-          if [ -z "$BUILD_SERVICES" ]; then
-            echo "ℹ️ No services need building. Exiting."
-            echo "build_services=" >> $GITHUB_ENV
-            echo "skip_build=true" >> $GITHUB_ENV
-            exit 0
           fi
           
           echo ""
@@ -290,6 +283,7 @@ jobs:
           # Slack용 포맷팅
           FORMATTED_SERVICES=$(echo $BUILD_SERVICES | sed 's/ /, /g')
           echo "formatted_services=$FORMATTED_SERVICES" >> $GITHUB_ENV
+
           
       - name: Build services
         if: env.skip_build != 'true' && env.build_services != ''
