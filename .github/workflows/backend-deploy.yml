@@ -73,6 +73,7 @@ jobs:
           done
 
       - name: Run SonarQube Scan
+        id: sonarqube-scan
         run: |
           # SonarQube Scanner 다운로드 및 실행
           wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
@@ -88,6 +89,38 @@ jobs:
             -Dsonar.exclusions="**/build/**,**/gradle/**,**/gradlew,**/gradlew.bat,**/.gradle/**" \
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+      - name: Notify SonarQube Completion
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          custom_payload: |
+            {
+              text: "✅ SonarQube Code Analysis Completed",
+              attachments: [{
+                color: "good",
+                fields: [{
+                  title: "Repository",
+                  value: "${{ github.repository }}",
+                  short: true
+                }, {
+                  title: "Branch",
+                  value: "${{ github.ref_name }}",
+                  short: true
+                }, {
+                  title: "Commit",
+                  value: "${{ github.sha }}".substring(0, 7),
+                  short: true
+                }, {
+                  title: "Analysis Report",
+                  value: "${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall",
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -145,6 +178,7 @@ jobs:
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
           
       - name: Build services
+        id: build-services
         if: env.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -233,6 +267,42 @@ jobs:
 
           # 빌드 결과를 환경변수로 저장
           echo "built_services=$BUILT_SERVICES" >> $GITHUB_ENV
+
+      - name: Notify ECR Push Completion
+        if: success() && env.built_services != ''
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          custom_payload: |
+            {
+              text: "🚀 Docker Images Successfully Pushed to ECR",
+              attachments: [{
+                color: "good",
+                fields: [{
+                  title: "Repository",
+                  value: "${{ github.repository }}",
+                  short: true
+                }, {
+                  title: "Branch",
+                  value: "${{ github.ref_name }}",
+                  short: true
+                }, {
+                  title: "Built Services",
+                  value: "${{ env.build_services }}",
+                  short: false
+                }, {
+                  title: "Updated Images",
+                  value: "${{ env.built_services }}",
+                  short: false
+                }, {
+                  title: "ECR Repository",
+                  value: "${{ steps.login-ecr.outputs.registry }}/kubox",
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           
       - name: Update Helm Chart
         if: env.built_services != ''
@@ -300,3 +370,22 @@ jobs:
           echo "   - Images exist: Build only CHANGED services"
           echo "   - Latest tag always points to newest version"
           echo "   - Helm chart automatically updated"
+
+  # 전체 워크플로우 결과 알림
+  notification:
+    name: Notification
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [build]
+    steps:
+      - uses: martialonline/workflow-status@v3
+        id: check
+      - name: Final Workflow Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ steps.check.outputs.status }}
+          author_name: Github Action Bot
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()

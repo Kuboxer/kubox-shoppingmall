@@ -28,6 +28,7 @@ jobs:
         npm ci
     
     - name: Build React app
+      id: build-app
       run: |
         cd frontend
         npm run build
@@ -48,11 +49,67 @@ jobs:
         aws-region: ${{ secrets.AWS_REGION }}
     
     - name: Deploy to S3 (Safe Mode)
+      id: deploy-s3
       run: |
         cd frontend
         # React 빌드 파일만 업로드, images 폴더는 제외하고 삭제
         aws s3 sync build/ s3://${{ secrets.S3_BUCKET_NAME }} --delete --exclude="images/*"
+
+    - name: Notify S3 Deployment Completion
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        custom_payload: |
+          {
+            text: "🌐 Frontend Successfully Deployed to S3",
+            attachments: [{
+              color: "good",
+              fields: [{
+                title: "Repository",
+                value: "${{ github.repository }}",
+                short: true
+              }, {
+                title: "Branch",
+                value: "${{ github.ref_name }}",
+                short: true
+              }, {
+                title: "Commit",
+                value: "${{ github.sha }}".substring(0, 7),
+                short: true
+              }, {
+                title: "S3 Bucket",
+                value: "${{ secrets.S3_BUCKET_NAME }}",
+                short: true
+              }, {
+                title: "Deployment Status",
+                value: "✅ Build and S3 sync completed successfully",
+                short: false
+              }]
+            }]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     
     - name: Invalidate CloudFront (optional)
       run: |
         echo "CloudFront invalidation can be added here if needed"
+
+  # 전체 워크플로우 결과 알림
+  notification:
+    name: Notification
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [deploy]
+    steps:
+      - uses: martialonline/workflow-status@v3
+        id: check
+      - name: Final Workflow Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ steps.check.outputs.status }}
+          author_name: Github Action Bot
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
