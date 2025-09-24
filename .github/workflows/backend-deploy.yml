@@ -116,7 +116,7 @@ jobs:
                   "short": true
                 }, {
                   "title": "Analysis Report",
-                  "value": "${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall",
+                  "value": "Check SonarQube Dashboard for detailed results",
                   "short": false
                 }, {
                   "title": "⚠️ Action Required",
@@ -142,7 +142,7 @@ jobs:
       - name: Display Approval Information
         run: |
           echo "🔍 Code Quality Analysis Complete!"
-          echo "📊 SonarQube Report: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall"
+          echo "📊 Please check SonarQube Dashboard for detailed analysis results"
           echo ""
           echo "⏳ This deployment requires manual approval."
           echo "👥 Approved reviewers: IluvRiver, JH2050, choiyunha"
@@ -229,15 +229,18 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+          mask-aws-account-id: false
           
       - name: Login to ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
         
       - name: Detect services to build
         env:
@@ -415,13 +418,31 @@ jobs:
         run: |
           echo "🔄 Updating Helm Chart with new image tags..."
           
-          # Helm Chart 저장소 클론
-          git clone https://github.com/Kuboxer/kubox-helm-chart.git helm-repo
-          cd helm-repo
-          
           # Git 설정
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 토큰 확인 및 디버깅
+          if [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+            echo "❌ HELM_REPO_TOKEN is not set"
+            exit 1
+          fi
+          
+          echo "✅ HELM_REPO_TOKEN is available"
+          echo "🔍 Attempting to clone kubox-helm-chart repository..."
+          
+          # Helm Chart 저장소 클론 (상세한 에러 정보 포함)
+          if git clone https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git helm-repo; then
+            echo "✅ Successfully cloned helm chart repository"
+          else
+            echo "❌ Failed to clone helm chart repository"
+            echo "🔍 Checking if repository exists..."
+            curl -s -H "Authorization: token ${{ secrets.HELM_REPO_TOKEN }}" https://api.github.com/repos/Kuboxer/kubox-helm-chart || echo "Repository check failed"
+            echo "⚠️  Skipping helm chart update due to clone failure"
+            exit 0
+          fi
+          
+          cd helm-repo
           
           # 빌드된 각 서비스의 태그 업데이트
           for SERVICE_TAG in ${{ env.built_services }}; do
@@ -433,19 +454,29 @@ jobs:
             # values.yaml에서 해당 서비스의 태그 업데이트
             case $SERVICE in
               "user-service")
-                sed -i "s/tag: user-service-v.*/tag: $TAG/" values.yaml
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: user-service-v.*/tag: $TAG/" values.yaml
+                fi
                 ;;
               "product-service")
-                sed -i "s/tag: product-service-v.*/tag: $TAG/" values.yaml
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: product-service-v.*/tag: $TAG/" values.yaml
+                fi
                 ;;
               "cart-service")
-                sed -i "s/tag: cart-service-v.*/tag: $TAG/" values.yaml
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: cart-service-v.*/tag: $TAG/" values.yaml
+                fi
                 ;;
               "order-service")
-                sed -i "s/tag: order-service-v.*/tag: $TAG/" values.yaml
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: order-service-v.*/tag: $TAG/" values.yaml
+                fi
                 ;;
               "payment-service")
-                sed -i "s/tag: payment-service-v.*/tag: $TAG/" values.yaml
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: payment-service-v.*/tag: $TAG/" values.yaml
+                fi
                 ;;
             esac
           done
@@ -454,12 +485,15 @@ jobs:
           echo "📋 Changes made:"
           git diff
           
-          # 변경사항이 있으면 커밋 & 푸시
+          # 변경사항이 있으면 커밋 & 푸시 (토큰 사용 시도, 실패하면 스킵)
           if [ -n "$(git status --porcelain)" ]; then
             git add .
             git commit -m "Update image tags: ${{ env.built_services }}"
-            git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main
-            echo "✅ Helm chart updated successfully"
+            if [ -n "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+              git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main && echo "✅ Helm chart updated successfully" || echo "⚠️  Failed to push helm chart changes"
+            else
+              echo "⚠️  HELM_REPO_TOKEN not found. Skipping helm chart push."
+            fi
           else
             echo "ℹ️  No changes to commit"
           fi
@@ -471,8 +505,17 @@ jobs:
     if: ${{ always() }}
     needs: [sonarqube-analysis, manual-approval, build-and-deploy]
     steps:
-      - uses: martialonline/workflow-status@v3
+      - name: Get workflow status
         id: check
+        run: |
+          if [ "${{ needs.sonarqube-analysis.result }}" == "success" ] && [ "${{ needs.manual-approval.result }}" == "success" ] && [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.sonarqube-analysis.result }}" == "cancelled" ] || [ "${{ needs.manual-approval.result }}" == "cancelled" ] || [ "${{ needs.build-and-deploy.result }}" == "cancelled" ]; then
+            echo "status=cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+          
       - name: Final Workflow Notification
         uses: 8398a7/action-slack@v3
         with:

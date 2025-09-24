@@ -1,0 +1,114 @@
+name: Backend Deploy Debug Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-debug.yml'
+
+jobs:
+  debug-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Debug Environment
+        run: |
+          echo "🔍 Debug Information:"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo ""
+          echo "🔍 Changed files:"
+          git diff --name-only HEAD~1 HEAD || echo "Cannot detect changed files"
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          mask-aws-account-id: false
+          
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
+          
+      - name: Test ECR Access
+        run: |
+          echo "🔍 Testing ECR access..."
+          aws ecr describe-repositories --repository-names kubox || echo "Repository 'kubox' not found"
+          
+          echo "🔍 Checking existing images..."
+          aws ecr describe-images --repository-name kubox --query "imageDetails[].imageTags[]" --output text 2>/dev/null || echo "No images found or access denied"
+          
+      - name: Test Simple Docker Build
+        run: |
+          echo "🔍 Testing simple Docker build..."
+          
+          # 간단한 테스트 - user-service만 빌드
+          if [ -d "backend/user-service" ]; then
+            echo "✅ user-service directory found"
+            cd backend/user-service
+            
+            if [ -f "Dockerfile" ]; then
+              echo "✅ Dockerfile found"
+              echo "🏗️ Building test image..."
+              
+              if docker build -t test-image:latest .; then
+                echo "✅ Docker build successful"
+                
+                # ECR에 푸시 테스트
+                ECR_URI="${{ steps.login-ecr.outputs.registry }}/kubox:test-debug"
+                docker tag test-image:latest $ECR_URI
+                
+                if docker push $ECR_URI; then
+                  echo "✅ ECR push successful"
+                else
+                  echo "❌ ECR push failed"
+                fi
+              else
+                echo "❌ Docker build failed"
+              fi
+            else
+              echo "❌ Dockerfile not found"
+            fi
+          else
+            echo "❌ user-service directory not found"
+          fi
+          
+      - name: Notify Debug Results
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          custom_payload: |
+            {
+              "text": "🐛 Debug Test Results",
+              "attachments": [{
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [{
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
+                }, {
+                  "title": "Status",
+                  "value": "${{ job.status }}",
+                  "short": true
+                }, {
+                  "title": "Test Purpose",
+                  "value": "Debugging build and ECR push issues",
+                  "short": false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
