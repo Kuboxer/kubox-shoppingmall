@@ -244,11 +244,13 @@ jobs:
             
             # 다양한 방법으로 변경된 파일 감지 시도
             CHANGED_FILES=""
+            DETECTION_METHOD=""
             
             # 방법 1: HEAD~1과 비교
             if [ -z "$CHANGED_FILES" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
               echo "📄 Method 1: Comparing HEAD with HEAD~1"
               CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+              DETECTION_METHOD="HEAD~1 comparison"
             fi
             
             # 방법 2: GitHub event before SHA 사용 (존재 여부 확인)
@@ -256,37 +258,45 @@ jobs:
               echo "📄 Method 2: Trying GitHub event before SHA: ${{ github.event.before }}"
               if git cat-file -e ${{ github.event.before }} 2>/dev/null; then
                 CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} HEAD 2>/dev/null || echo "")
-                echo "  ✅ Successfully used GitHub event SHA"
+                if [ -n "$CHANGED_FILES" ]; then
+                  DETECTION_METHOD="GitHub event SHA"
+                  echo "  ✅ Successfully used GitHub event SHA"
+                else
+                  echo "  ⚠️ GitHub event SHA exists but no changes detected"
+                fi
               else
                 echo "  ⚠️ GitHub event SHA not available in this repository"
               fi
             fi
             
-            # 방법 3: 현재 커밋에서 변경된 파일 분석
+            # 방법 3: 현재 커밋에서 변경된 파일 분석 (이것이 문제일 가능성)
             if [ -z "$CHANGED_FILES" ]; then
-              echo "📄 Method 3: Analyzing current commit only"
+              echo "📄 Method 3: Analyzing current commit only (WARNING: This may include all files)"
               CHANGED_FILES=$(git show --name-only --format="" HEAD 2>/dev/null || echo "")
+              DETECTION_METHOD="Current commit analysis (RISKY)"
+              echo "  ⚠️ WARNING: This method may show all files in current commit!"
             fi
             
-            # 방법 4: 새로운 파일들 찾기
-            if [ -z "$CHANGED_FILES" ]; then
-              echo "📄 Method 4: Finding untracked/modified files"
-              CHANGED_FILES=$(git ls-files --others --modified --exclude-standard 2>/dev/null || echo "")
-            fi
+            # 방법 4는 제거 (너무 위험함)
             
             # 방법 5: 전체 빌드 (안전장치)
             if [ -z "$CHANGED_FILES" ]; then
-              echo "⚠️ Method 5: Cannot detect changes - building ALL services for safety"
+              echo "⚠️ Method 4: Cannot detect changes - building ALL services for safety"
               BUILD_SERVICES="${ALL_SERVICES[@]}"
+              DETECTION_METHOD="Fallback to all services"
             else
-              echo "Changed files detected:"
+              echo ""
+              echo "🔍 Detection method used: $DETECTION_METHOD"
+              echo "📄 Changed files detected ($(echo "$CHANGED_FILES" | wc -l) files):"
               echo "$CHANGED_FILES"
               echo ""
               
-              # 변경된 서비스 찾기
+              # 🔥 CRITICAL: Only match files that are ACTUALLY in service directories
               for SERVICE in "${ALL_SERVICES[@]}"; do
-                if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
-                  echo "✅ Changes detected in: $SERVICE"
+                SERVICE_FILES=$(echo "$CHANGED_FILES" | grep "^backend/$SERVICE/" || true)
+                if [ -n "$SERVICE_FILES" ]; then
+                  echo "✅ Changes in $SERVICE:"
+                  echo "$SERVICE_FILES" | head -3
                   BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
                 else
                   echo "⚪ No changes in: $SERVICE"
@@ -295,21 +305,39 @@ jobs:
               
               BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
               
+              echo ""
+              echo "🎯 DECISION LOGIC:"
+              echo "  - Total changed files: $(echo "$CHANGED_FILES" | wc -l)"
+              echo "  - Backend files: $(echo "$CHANGED_FILES" | grep "^backend/" | wc -l)"
+              echo "  - Service-specific files: $(echo "$CHANGED_FILES" | grep -E "^backend/(user-service|product-service|order-service|payment-service|cart-service)/" | wc -l)"
+              echo "  - Services to build: $(echo $BUILD_SERVICES | wc -w)"
+              
               # 백엔드 변경이 없는 경우
               if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/"; then
-                echo "ℹ️ No backend-related changes detected. Skipping build."
+                echo "  - Decision: SKIP BUILD (no backend changes)"
                 echo "build_services=" >> $GITHUB_ENV
                 echo "skip_build=true" >> $GITHUB_ENV
                 exit 0
               fi
               
-              # 백엔드 공통 파일 변경 시 전체 빌드
+              # ❌ 이 부분이 문제! 주석 처리
+              # 백엔드 공통 파일 변경 시 전체 빌드 -> 너무 공격적
+              # if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              #   echo "🤔 Backend changes detected but not in specific services"
+              #   echo "📋 Backend files changed:"
+              #   echo "$CHANGED_FILES" | grep "^backend/" | head -5
+              #   echo "⚠️ Building all services for safety (common files changed)"
+              #   BUILD_SERVICES="${ALL_SERVICES[@]}"
+              # fi
+              
+              # 🔥 NEW: 더 엄격한 로직
               if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
-                echo "🤔 Backend changes detected but not in specific services"
-                echo "📋 Backend files changed:"
-                echo "$CHANGED_FILES" | grep "^backend/" | head -5
-                echo "⚠️ Building all services for safety (common files changed)"
-                BUILD_SERVICES="${ALL_SERVICES[@]}"
+                echo "  - Backend files changed but NOT in service directories:"
+                echo "$CHANGED_FILES" | grep "^backend/" | grep -v -E "^backend/(user-service|product-service|order-service|payment-service|cart-service)/" | head -5
+                echo "  - Decision: SKIP BUILD (only non-service backend files changed)"
+                echo "build_services=" >> $GITHUB_ENV
+                echo "skip_build=true" >> $GITHUB_ENV
+                exit 0
               fi
             fi
           fi
