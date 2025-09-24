@@ -242,9 +242,20 @@ jobs:
           else
             echo "📋 Images exist in ECR. Checking for changed services only."
             
-            # 변경된 파일 확인 (당신의 검증된 로직)
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-            echo "📄 Changed files:"
+            # 안전한 변경된 파일 확인 (HEAD~1 존재 여부 확인)
+            CHANGED_FILES=""
+            if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+              echo "📄 Comparing HEAD with HEAD~1"
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              echo "📄 Using GitHub event before SHA: ${{ github.event.before }}"
+              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} HEAD)
+            else
+              echo "📄 First commit or no previous commit found - analyzing current commit"
+              CHANGED_FILES=$(git show --name-only --format="" HEAD)
+            fi
+            
+            echo "Changed files:"
             echo "$CHANGED_FILES"
             echo ""
             
@@ -259,6 +270,23 @@ jobs:
             done
             
             BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
+            
+            # 백엔드 변경이 없는 경우 체크
+            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              echo "ℹ️  No backend-related changes detected. Skipping build."
+              echo "build_services=" >> $GITHUB_ENV
+              echo "skip_build=true" >> $GITHUB_ENV
+              exit 0
+            fi
+            
+            # 백엔드 파일 변경이 있지만 특정 서비스가 아닌 경우
+            if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              echo "🤔 Backend changes detected but not in specific service directories"
+              echo "📋 Changed backend files:"
+              echo "$CHANGED_FILES" | grep "^backend/" || echo "None"
+              echo "⚠️  This might be common files - building all services for safety"
+              BUILD_SERVICES="${ALL_SERVICES[@]}"
+            fi
           fi
           
           if [ -z "$BUILD_SERVICES" ]; then
