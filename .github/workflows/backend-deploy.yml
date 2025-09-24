@@ -228,66 +228,94 @@ jobs:
           ALL_SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
           BUILD_SERVICES=""
           
-          echo "🔍 Analyzing changed files to build ONLY modified services"
+          echo "🔍 STRICT MODE: Building ONLY services with direct code changes"
           echo ""
           
           # 변경 파일 감지
           CHANGED_FILES=""
           if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
             CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-            echo "📋 Comparing with previous commit"
+            echo "📋 Comparing HEAD with HEAD~1"
           else
-            echo "⚠️  First commit - building all services"
-            BUILD_SERVICES="${ALL_SERVICES[@]}"
+            CHANGED_FILES=$(git show --name-only --format="" HEAD)
+            echo "📋 First commit - analyzing current commit"
           fi
           
-          # 변경된 파일이 있으면 해당 서비스만 찾기
-          if [ -n "$CHANGED_FILES" ] && [ -z "$BUILD_SERVICES" ]; then
-            echo "📄 Changed files:"
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "📄 All changed files:"
             echo "$CHANGED_FILES"
             echo ""
+            echo "🔍 Checking each service for changes..."
             
-            # 각 서비스별로 정확한 경로 매칭
+            # 각 서비스별로 정확한 경로 매칭 - 매우 엄격하게
             for SERVICE in "${ALL_SERVICES[@]}"; do
-              if echo "$CHANGED_FILES" | grep -q "^backend/$SERVICE/"; then
-                echo "✅ Changes in: $SERVICE"
+              SERVICE_CHANGED=false
+              
+              # 해당 서비스 디렉토리 내의 코드 파일만 체크
+              while IFS= read -r file; do
+                if [[ "$file" =~ ^backend/$SERVICE/.*\.(java|gradle|Dockerfile)$ ]]; then
+                  echo "    ✅ Code change detected: $file"
+                  SERVICE_CHANGED=true
+                  break
+                fi
+              done <<< "$CHANGED_FILES"
+              
+              if [ "$SERVICE_CHANGED" = true ]; then
+                echo "✅ $SERVICE: WILL BUILD (code changes found)"
                 BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
               else
-                echo "⚪ No changes: $SERVICE"
+                echo "⚪ $SERVICE: SKIP (no code changes)"
               fi
             done
             
             BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
             
-            # 백엔드와 무관한 변경만 있는 경우
-            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/.*\.java\|^backend/.*/Dockerfile\|^backend/.*/build\.gradle"; then
-              echo ""
-              echo "ℹ️  No backend service changes - skipping build"
-              echo "build_services=" >> $GITHUB_ENV
-              echo "skip_build=true" >> $GITHUB_ENV
-              exit 0
-            fi
+            echo ""
+            echo "📊 Analysis Summary:"
+            echo "   Total changed files: $(echo "$CHANGED_FILES" | wc -l)"
+            echo "   Backend files changed: $(echo "$CHANGED_FILES" | grep "^backend/" | wc -l)"
+            echo "   Services with code changes: $(echo $BUILD_SERVICES | wc -w)"
             
-            # 백엔드 변경이 있지만 특정 서비스가 아닌 경우
+            # 백엔드 파일 변경이 있지만 서비스 코드 변경이 없는 경우
             if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
               echo ""
-              echo "🛡️  Building all services (common files changed)"
-              BUILD_SERVICES="${ALL_SERVICES[@]}"
+              echo "📋 Backend files changed but no service code:"
+              echo "$CHANGED_FILES" | grep "^backend/" | head -5
+              
+              # 워크플로우 파일만 변경된 경우
+              if echo "$CHANGED_FILES" | grep -q "^.github/workflows/" && [ $(echo "$CHANGED_FILES" | grep -v "^.github/workflows/" | wc -l) -eq 0 ]; then
+                echo "⚠️  Only workflow files changed - no service build needed"
+              else
+                echo "ℹ️  No service-specific code changes detected"
+              fi
             fi
+            
+            # 백엔드와 완전 무관한 변경만 있는 경우
+            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              echo ""
+              echo "ℹ️  No backend-related changes at all:"
+              echo "$CHANGED_FILES" | head -3
+              echo "⏭️  Skipping entire build process"
+            fi
+          else
+            echo "⚠️  No changed files detected"
           fi
           
           if [ -z "$BUILD_SERVICES" ]; then
-            echo "🎯 No services need building"
+            echo ""
+            echo "🎯 FINAL RESULT: No services need building"
             echo "build_services=" >> $GITHUB_ENV
             echo "skip_build=true" >> $GITHUB_ENV
             exit 0
           fi
           
           echo ""
-          echo "🎯 Building these services:"
+          echo "🎯 FINAL RESULT: Building ONLY these services:"
           for SERVICE in $BUILD_SERVICES; do
             echo "  🔨 $SERVICE"
           done
+          echo ""
+          echo "⚠️  NOTE: Will NOT build: $(echo "${ALL_SERVICES[@]}" | tr ' ' '\n' | grep -v -F "$(echo $BUILD_SERVICES | tr ' ' '\n')" | tr '\n' ' ')"
           echo ""
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
           echo "skip_build=false" >> $GITHUB_ENV
