@@ -1,4 +1,4 @@
-name: Backend MSA Deploy - Fixed JSON
+name: Backend MSA Deploy with Smart Detection
 
 on:
   workflow_dispatch:
@@ -73,7 +73,6 @@ jobs:
           done
 
       - name: Run SonarQube Scan
-        id: sonarqube-scan
         run: |
           wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
           unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
@@ -221,102 +220,57 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
         with:
           mask-password: true
-        
-      - name: 🔍 Detect Changed Services ONLY
-        id: detect-services
+
+      - name: Detect services to build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           ALL_SERVICES=("user-service" "product-service" "order-service" "payment-service" "cart-service")
           BUILD_SERVICES=""
           
-          echo "🔍 STRICT MODE: Building ONLY services with direct code changes"
-          echo ""
+          # ECR에 이미지가 하나라도 있는지 확인
+          TOTAL_IMAGES=$(aws ecr describe-images \
+            --repository-name kubox \
+            --query "length(imageDetails)" \
+            --output text 2>/dev/null || echo "0")
           
-          # 변경 파일 감지
-          CHANGED_FILES=""
-          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-            echo "📋 Comparing HEAD with HEAD~1"
+          echo "📊 Total images in ECR: $TOTAL_IMAGES"
+          
+          if [ "$TOTAL_IMAGES" = "0" ]; then
+            echo "🆕 No images found in ECR. Building ALL services for first time."
+            BUILD_SERVICES="${ALL_SERVICES[@]}"
           else
-            CHANGED_FILES=$(git show --name-only --format="" HEAD)
-            echo "📋 First commit - analyzing current commit"
-          fi
-          
-          if [ -n "$CHANGED_FILES" ]; then
-            echo "📄 All changed files:"
+            echo "📋 Images exist in ECR. Checking for changed services only."
+            
+            # 변경된 파일 확인 (당신의 검증된 로직)
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            echo "📄 Changed files:"
             echo "$CHANGED_FILES"
             echo ""
-            echo "🔍 Checking each service for changes..."
             
-            # 각 서비스별로 정확한 경로 매칭 - 매우 엄격하게
+            # 변경된 서비스 찾기 (정확한 매칭)
             for SERVICE in "${ALL_SERVICES[@]}"; do
-              SERVICE_CHANGED=false
-              
-              # 해당 서비스 디렉토리 내의 코드 파일만 체크
-              while IFS= read -r file; do
-                if [[ "$file" =~ ^backend/$SERVICE/.*\.(java|gradle|Dockerfile)$ ]]; then
-                  echo "    ✅ Code change detected: $file"
-                  SERVICE_CHANGED=true
-                  break
-                fi
-              done <<< "$CHANGED_FILES"
-              
-              if [ "$SERVICE_CHANGED" = true ]; then
-                echo "✅ $SERVICE: WILL BUILD (code changes found)"
+              if echo "$CHANGED_FILES" | grep -q "backend/$SERVICE/"; then
+                echo "✅ Changes detected in: $SERVICE"
                 BUILD_SERVICES="$BUILD_SERVICES $SERVICE"
               else
-                echo "⚪ $SERVICE: SKIP (no code changes)"
+                echo "⚪ No changes in: $SERVICE"  
               fi
             done
             
             BUILD_SERVICES=$(echo $BUILD_SERVICES | xargs)
-            
-            echo ""
-            echo "📊 Analysis Summary:"
-            echo "   Total changed files: $(echo "$CHANGED_FILES" | wc -l)"
-            echo "   Backend files changed: $(echo "$CHANGED_FILES" | grep "^backend/" | wc -l)"
-            echo "   Services with code changes: $(echo $BUILD_SERVICES | wc -w)"
-            
-            # 백엔드 파일 변경이 있지만 서비스 코드 변경이 없는 경우
-            if [ -z "$BUILD_SERVICES" ] && echo "$CHANGED_FILES" | grep -q "^backend/"; then
-              echo ""
-              echo "📋 Backend files changed but no service code:"
-              echo "$CHANGED_FILES" | grep "^backend/" | head -5
-              
-              # 워크플로우 파일만 변경된 경우
-              if echo "$CHANGED_FILES" | grep -q "^.github/workflows/" && [ $(echo "$CHANGED_FILES" | grep -v "^.github/workflows/" | wc -l) -eq 0 ]; then
-                echo "⚠️  Only workflow files changed - no service build needed"
-              else
-                echo "ℹ️  No service-specific code changes detected"
-              fi
-            fi
-            
-            # 백엔드와 완전 무관한 변경만 있는 경우
-            if [ -z "$BUILD_SERVICES" ] && ! echo "$CHANGED_FILES" | grep -q "^backend/"; then
-              echo ""
-              echo "ℹ️  No backend-related changes at all:"
-              echo "$CHANGED_FILES" | head -3
-              echo "⏭️  Skipping entire build process"
-            fi
-          else
-            echo "⚠️  No changed files detected"
           fi
           
           if [ -z "$BUILD_SERVICES" ]; then
             echo ""
-            echo "🎯 FINAL RESULT: No services need building"
+            echo "ℹ️  No services need building. Exiting."
             echo "build_services=" >> $GITHUB_ENV
             echo "skip_build=true" >> $GITHUB_ENV
             exit 0
           fi
           
           echo ""
-          echo "🎯 FINAL RESULT: Building ONLY these services:"
-          for SERVICE in $BUILD_SERVICES; do
-            echo "  🔨 $SERVICE"
-          done
-          echo ""
-          echo "⚠️  NOTE: Will NOT build: $(echo "${ALL_SERVICES[@]}" | tr ' ' '\n' | grep -v -F "$(echo $BUILD_SERVICES | tr ' ' '\n')" | tr '\n' ' ')"
-          echo ""
+          echo "🎯 Services to build: $BUILD_SERVICES"
           echo "build_services=$BUILD_SERVICES" >> $GITHUB_ENV
           echo "skip_build=false" >> $GITHUB_ENV
           
@@ -324,22 +278,23 @@ jobs:
           FORMATTED_SERVICES=$(echo $BUILD_SERVICES | sed 's/ /, /g')
           echo "formatted_services=$FORMATTED_SERVICES" >> $GITHUB_ENV
           
-      - name: Build Docker Images
+      - name: Build services
         if: env.skip_build != 'true' && env.build_services != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
+          # 고유성을 위한 타임스탬프
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           BUILD_NUMBER="${{ github.run_number }}"
+          
+          # 빌드된 서비스와 버전을 저장할 배열
           BUILT_SERVICES=""
           
-          echo "🏗️ Building Docker images for selected services..."
-          echo ""
-          
           for SERVICE in ${{ env.build_services }}; do
-            echo "==================== $SERVICE ===================="
+            echo "==================== Processing $SERVICE ===================="
             
-            # 기존 버전 확인
+            # 현재 서비스의 기존 버전 확인
+            echo "🔍 Checking existing versions for $SERVICE..."
             EXISTING_VERSIONS=$(aws ecr describe-images \
               --repository-name kubox \
               --query "imageDetails[].imageTags[]" \
@@ -351,51 +306,68 @@ jobs:
             
             if [ -z "$EXISTING_VERSIONS" ]; then
               NEXT_VERSION=1
-              echo "🆕 First version: v1"
+              echo "🆕 No existing versions found. Creating first version: v1"
             else
+              echo "📋 Existing versions: $(echo $EXISTING_VERSIONS | tr '\n' ' ')"
               LATEST_VERSION=$(echo "$EXISTING_VERSIONS" | tail -1)
               NEXT_VERSION=$((LATEST_VERSION + 1))
-              echo "📈 v$LATEST_VERSION → v$NEXT_VERSION"
+              echo "📈 Latest version: v$LATEST_VERSION → Next version: v$NEXT_VERSION"
             fi
             
+            # 최종 태그들
             VERSION_TAG="${SERVICE}-v${NEXT_VERSION}"
             LATEST_TAG="${SERVICE}-latest"
+            
+            # 임시 고유 태그 (충돌 방지용)
             TEMP_TAG="${SERVICE}-temp-${TIMESTAMP}-${BUILD_NUMBER}"
             
             VERSION_URI="$ECR_REGISTRY/kubox:$VERSION_TAG"
             LATEST_URI="$ECR_REGISTRY/kubox:$LATEST_TAG"
             
-            echo "🏗️  Building: $VERSION_TAG"
+            echo "🏗️  Building $SERVICE as $VERSION_TAG"
             
+            # 도커 빌드
             cd backend/$SERVICE
             
             if docker build --build-arg VERSION="$VERSION_TAG" -t "$TEMP_TAG" .; then
               echo "✅ Build successful"
               
+              # 버전 태그 적용 및 푸시
               docker tag "$TEMP_TAG" "$VERSION_URI"
               if docker push "$VERSION_URI"; then
-                echo "✅ Pushed: $VERSION_TAG"
+                echo "✅ Successfully pushed $VERSION_TAG"
                 
+                # latest 태그 적용 및 푸시
                 docker tag "$TEMP_TAG" "$LATEST_URI"
                 docker push "$LATEST_URI"
-                echo "✅ Updated: $LATEST_TAG"
+                echo "✅ Updated $LATEST_TAG tag"
                 
+                # 빌드 성공한 서비스 기록
                 BUILT_SERVICES="$BUILT_SERVICES $SERVICE:$VERSION_TAG"
+                
+                echo "🎯 $SERVICE is now available as:"
+                echo "   📦 $VERSION_TAG"
+                echo "   🏷️  $LATEST_TAG"
+                
               else
-                echo "❌ Failed to push: $VERSION_TAG"
+                echo "❌ Failed to push $VERSION_TAG"
               fi
               
+              # 임시 태그 정리
               docker rmi "$TEMP_TAG" 2>/dev/null || true
+              
             else
-              echo "❌ Build failed: $SERVICE"
+              echo "❌ Build failed for $SERVICE"
             fi
             
             cd ../..
-            echo ""
+            echo "---"
           done
 
+          # 빌드 결과를 환경변수로 저장
           echo "built_services=$BUILT_SERVICES" >> $GITHUB_ENV
           
+          # Slack용 포맷팅
           if [ -n "$BUILT_SERVICES" ]; then
             FORMATTED_BUILT=$(echo "$BUILT_SERVICES" | sed 's/ /\\n• /g' | sed 's/:/: /g')
             echo "formatted_built_services=• $FORMATTED_BUILT" >> $GITHUB_ENV
@@ -456,7 +428,7 @@ jobs:
                   },
                   {
                     "title": "Result",
-                    "value": "✅ SonarQube completed\\n⚪ No backend service changes\\n⏭️ Skipped Docker build",
+                    "value": "✅ SonarQube completed\\n⚪ No backend service changes detected\\n⏭️ Skipped Docker build",
                     "short": false
                   }
                 ]
@@ -464,6 +436,75 @@ jobs:
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+      - name: Update Helm Chart
+        if: env.skip_build != 'true' && env.built_services != ''
+        run: |
+          echo "🔄 Updating Helm Chart with new image tags..."
+          
+          # Git 설정
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Helm Chart 저장소 클론
+          if [ -n "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+            git clone https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git helm-repo
+          else
+            echo "⚠️  HELM_REPO_TOKEN not set - skipping helm chart update"
+            exit 0
+          fi
+          
+          cd helm-repo
+          
+          # 빌드된 각 서비스의 태그 업데이트
+          for SERVICE_TAG in ${{ env.built_services }}; do
+            SERVICE=$(echo $SERVICE_TAG | cut -d':' -f1)
+            TAG=$(echo $SERVICE_TAG | cut -d':' -f2)
+            
+            echo "📝 Updating $SERVICE to $TAG"
+            
+            # values.yaml에서 해당 서비스의 태그 업데이트
+            case $SERVICE in
+              "user-service")
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: user-service-v.*/tag: $TAG/" values.yaml
+                fi
+                ;;
+              "product-service")
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: product-service-v.*/tag: $TAG/" values.yaml
+                fi
+                ;;
+              "cart-service")
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: cart-service-v.*/tag: $TAG/" values.yaml
+                fi
+                ;;
+              "order-service")
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: order-service-v.*/tag: $TAG/" values.yaml
+                fi
+                ;;
+              "payment-service")
+                if [ -f values.yaml ]; then
+                  sed -i "s/tag: payment-service-v.*/tag: $TAG/" values.yaml
+                fi
+                ;;
+            esac
+          done
+          
+          # 변경사항 확인
+          echo "📋 Changes made:"
+          git diff
+          
+          # 변경사항이 있으면 커밋 & 푸시
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Update image tags: ${{ env.built_services }}"
+            git push https://${{ secrets.HELM_REPO_TOKEN }}@github.com/Kuboxer/kubox-helm-chart.git main && echo "✅ Helm chart updated successfully" || echo "⚠️  Failed to push helm chart changes"
+          else
+            echo "ℹ️  No changes to commit"
+          fi
 
   final-notification:
     name: 📊 Final Status
@@ -479,7 +520,7 @@ jobs:
             {
               "attachments": [{
                 "color": "${{ needs.build-and-deploy.result == 'success' && '#36a64f' || '#d73a49' }}",
-                "title": "${{ needs.build-and-deploy.result == 'success' && '🎉 Deployment Workflow Completed' || '❌ Deployment Workflow Failed' }}",
+                "title": "${{ needs.build-and-deploy.result == 'success' && '🎉 Deployment Workflow Completed Successfully' || '❌ Deployment Workflow Failed' }}",
                 "fields": [
                   {
                     "title": "Repository",
