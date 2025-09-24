@@ -110,34 +110,24 @@ jobs:
                     "short": true
                   },
                   {
-                    "title": "Branch", 
+                    "title": "Branch",
                     "value": "${{ github.ref_name }}",
                     "short": true
                   },
                   {
                     "title": "Commit",
-                    "value": "`${{ github.sha }}`".substring(0, 10),
+                    "value": "`${{ env.SHORT_SHA }}`",
                     "short": true
                   },
                   {
                     "title": "Triggered by",
                     "value": "${{ github.actor }}",
                     "short": true
-                  },
-                  {
-                    "title": "📋 Analysis Summary",
-                    "value": "✅ Code quality analysis has been completed successfully\n📊 Check SonarQube dashboard for detailed results\n⏳ Manual approval required to proceed with deployment",
-                    "short": false
-                  },
-                  {
-                    "title": "🔗 Actions",
-                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow> • <${{ secrets.SONAR_HOST_URL }}/dashboard?id=kubox-shopping-mall|SonarQube Dashboard>",
-                    "short": false
                   }
                 ],
                 "footer": "SonarQube Analysis",
                 "footer_icon": "https://docs.sonarqube.org/latest/images/favicon.ico",
-                "ts": $(date +%s)
+                "ts": ${{ env.TIMESTAMP }}
               }]
             }
         env:
