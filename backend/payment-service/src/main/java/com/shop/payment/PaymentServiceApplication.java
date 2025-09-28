@@ -9,4 +9,4 @@ public class PaymentServiceApplication {
         SpringApplication.run(PaymentServiceApplication.class, args);
     }
 }
-//새 이미지 빌드 테스트
+//new image build test
