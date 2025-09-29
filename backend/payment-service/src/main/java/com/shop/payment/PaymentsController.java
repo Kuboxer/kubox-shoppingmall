@@ -34,4 +34,3 @@ public class PaymentsController {
         }
     }
 }
-//test

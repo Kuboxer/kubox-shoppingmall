@@ -9,5 +9,3 @@ public class UserServiceApplication {
         SpringApplication.run(UserServiceApplication.class, args);
     }
 }
-
-//gitpush3
